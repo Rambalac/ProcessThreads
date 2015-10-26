@@ -13,6 +13,7 @@ namespace ProcessThreads.Tests
     }
     public class ProcessManagerTests : ProcessManagerTestsBase
     {
+
         public static void TestSimple()
         {
         }
@@ -55,8 +56,6 @@ namespace ProcessThreads.Tests
         public void StartTestSerializationString()
         {
             Assert.Equal("!!!123!!!", manager.Start(TestParam, "123").Result);
-
-
         }
 
         public static string TestParam(int param)
