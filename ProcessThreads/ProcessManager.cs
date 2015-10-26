@@ -16,12 +16,26 @@ namespace ProcessThreads
     using System.Threading;
     using System.Threading.Tasks;
     using System.Linq;
+    using System.Runtime.InteropServices;
 
     /// <summary>
     /// Manager for process threads
     /// </summary>
     public class ProcessManager
     {
+        [DllImport("kernel32.dll")]
+        static extern ErrorModes SetErrorMode(ErrorModes uMode);
+
+        [Flags]
+        public enum ErrorModes : uint
+        {
+            SYSTEM_DEFAULT = 0x0,
+            SEM_FAILCRITICALERRORS = 0x0001,
+            SEM_NOALIGNMENTFAULTEXCEPT = 0x0004,
+            SEM_NOGPFAULTERRORBOX = 0x0002,
+            SEM_NOOPENFILEERRORBOX = 0x8000
+        }
+
         /// <summary>
         /// List of started Process Threads
         /// </summary>
@@ -41,7 +55,8 @@ namespace ProcessThreads
             /// Communication pipe. Can be null.
             /// </summary>
             public readonly NamedPipeServerStream Pipe;
-            internal ProcessThread(Process process, NamedPipeServerStream pipe)
+
+            internal ProcessThread(Process process, NamedPipeServerStream pipe = null)
             {
                 if (process == null) throw new ArgumentNullException(nameof(process));
 
@@ -51,6 +66,8 @@ namespace ProcessThreads
 
         }
 
+
+        public bool CreateNoWindow = true;
 
         Process BuildInfo<T>(MethodInfo method, InvokeType type, TaskCompletionSource<T> exited, string arguments = "")
         {
@@ -65,7 +82,7 @@ namespace ProcessThreads
                     FileName = GetType().Assembly.Location,
                     Arguments = $"{(int)type} {assemblyLocation} {typeName} {methodName} " + arguments,
                     RedirectStandardError = true,
-                    //CreateNoWindow = true,
+                    CreateNoWindow = CreateNoWindow,
                     UseShellExecute = false,
                     ErrorDialog = false
                 },
@@ -93,43 +110,23 @@ namespace ProcessThreads
 
             proc.Exited += (sender, args) =>
             {
-                exited.SetResult(true);
+                if (proc.ExitCode == 0) exited.SetResult(true);
+                else
+                    exited.SetException(new Exception("Process Thread crashed"));
                 proc.Dispose();
             };
 
             proc.Start();
-            Processes.Add(new ProcessThread(proc, null));
+            Processes.Add(new ProcessThread(proc));
             return exited.Task;
         }
 
-        /// <summary>
-        /// Starts Process Thread without parameters
-        /// </summary>
-        /// <param name="method">Static method to start in Process Thread</param>
-        public Task<int> Start(Func<int> method)
-        {
-            if (!method.Method.IsStatic) throw new ArgumentException("Method has to be static", nameof(method));
-
-            var exited = new TaskCompletionSource<int>();
-            var proc = BuildInfo(method.Method, InvokeType.Simple, exited);
-
-
-            proc.Exited += (sender, args) =>
-            {
-                exited.SetResult(proc.ExitCode);
-                proc.Dispose();
-            };
-
-            proc.Start();
-            Processes.Add(new ProcessThread(proc, null));
-            return exited.Task;
-        }
         /// <summary>
         /// Starts Process Thread with bi-directional pipe for communication
         /// </summary>
         /// <param name="method"></param>
         /// <returns></returns>
-        public ProcessThread Start(Action<NamedPipeClientStream> method, out NamedPipeServerStream pipe)
+        public Task Start(Action<NamedPipeClientStream> method, out NamedPipeServerStream pipe)
         {
             if (!method.Method.IsStatic) throw new ArgumentException("Method has to be static", nameof(method));
 
@@ -140,7 +137,10 @@ namespace ProcessThreads
 
             proc.Exited += (sender, args) =>
             {
-                exited.SetResult(true);
+                if (proc.ExitCode == 0) exited.SetResult(true);
+                else
+                    exited.SetException(new Exception("Process Thread crashed"));
+
                 proc.Dispose();
             };
 
@@ -148,7 +148,7 @@ namespace ProcessThreads
             var res = new ProcessThread(proc, pipe);
             Processes.Add(res);
             pipe.WaitForConnection();
-            return res;
+            return exited.Task;
         }
 
         enum InvokeType
@@ -172,6 +172,7 @@ namespace ProcessThreads
             var formatter = new BinaryFormatter();
             proc.Exited += (sender, args) =>
             {
+                if (proc.ExitCode != 0) exited.SetException(new Exception("Process Thread crashed"));
                 proc.Dispose();
             };
 
@@ -191,6 +192,7 @@ namespace ProcessThreads
                     int bytesRead = pipe.EndRead(readar);
                     if (bytesRead == 0)
                     {
+                        pipe.Close();
                         memory.Position = 0;
                         var result = (R)formatter.Deserialize(memory);
                         exited.SetResult(result);
@@ -212,8 +214,11 @@ namespace ProcessThreads
         static int Main(string[] args)
         {
             if (args.Length < 4) return -1;
+            SetErrorMode(ErrorModes.SEM_NOGPFAULTERRORBOX);
+
             Console.Title = args[2] + "." + args[3];
             //Console.WriteLine(string.Join(",", args));
+
             try
             {
                 var assembly = Assembly.LoadFile(args[1]);
@@ -221,12 +226,16 @@ namespace ProcessThreads
                 switch ((InvokeType)int.Parse(args[0]))
                 {
                     case InvokeType.Simple:
-                        return InvokeSimple(type, args[3]);
+                        InvokeSimple(type, args[3]);
+                        break;
                     case InvokeType.Pipe:
-                        return InvokeWithPipe(type, args[3], args[4]);
+                        InvokeWithPipe(type, args[3], args[4]);
+                        break;
                     case InvokeType.OneParamOneResult:
-                        return InvokeWithOneParamOneResult(type, args[3], args[4]);
+                        InvokeWithOneParamOneResult(type, args[3], args[4]);
+                        break;
                 }
+                return 0;
             }
             catch (Exception e)
             {
@@ -236,7 +245,7 @@ namespace ProcessThreads
             return -1;
         }
 
-        static int InvokeWithOneParamOneResult(Type type, string methodName, string pipeName)
+        static void InvokeWithOneParamOneResult(Type type, string methodName, string pipeName)
         {
             var pipe = new NamedPipeClientStream(pipeName);
 
@@ -253,22 +262,24 @@ namespace ProcessThreads
 
             pipe.WaitForPipeDrain();
             pipe.Close();
-
-            return 0;
         }
 
-        static int InvokeWithPipe(Type type, string methodName, string pipeName)
+        static void InvokeWithPipe(Type type, string methodName, string pipeName)
         {
-            var method = type.GetMethod(methodName);
             var pipe = new NamedPipeClientStream(pipeName);
             pipe.Connect();
-            return (int)(method.Invoke(null, new object[] { pipe }) ?? 0);
+
+            var method = type.GetMethod(methodName);
+            method.Invoke(null, new object[] { pipe });
+
+            pipe.WaitForPipeDrain();
+            pipe.Close();
         }
 
-        static int InvokeSimple(Type type, string methodName)
+        static void InvokeSimple(Type type, string methodName)
         {
             var method = type.GetMethod(methodName);
-            return (int)(method.Invoke(null, new object[] { }) ?? 0);
+            method.Invoke(null, new object[] { });
         }
     }
 }
