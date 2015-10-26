@@ -21,8 +21,14 @@ namespace AZI.ProcessThreads
         /// </summary>
         public readonly NamedPipeServerStream Pipe;
 
+        /// <summary>
+        /// Task object for this Process Thread
+        /// </summary>
         public readonly Task Task;
 
+        /// <summary>
+        /// Waitable cancellation event. Set to cancel.
+        /// </summary>
         public readonly EventWaitHandle CancellationHandle;
 
         /// <summary>
@@ -30,6 +36,8 @@ namespace AZI.ProcessThreads
         /// </summary>
         /// <param name="process">Process object for Process Thread</param>
         /// <param name="pipe">Optional server-sided named pipe</param>
+        /// <param name="task">Task for Process Thread</param>
+        /// <param name="cancellationHandle">Handle to send cancel signal to Process Thread</param>
         internal ProcessThread(Process process, Task task, EventWaitHandle cancellationHandle, NamedPipeServerStream pipe = null)
         {
             if (process == null) throw new ArgumentNullException(nameof(process));
@@ -40,6 +48,9 @@ namespace AZI.ProcessThreads
             CancellationHandle = cancellationHandle;
         }
 
+        /// <summary>
+        /// Sends cancellation to this Process Thread
+        /// </summary>
         public void Cancel()
         {
             CancellationHandle.Set();

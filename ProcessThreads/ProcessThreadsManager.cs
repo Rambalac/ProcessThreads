@@ -31,7 +31,7 @@ namespace AZI.ProcessThreads
         readonly ConcurrentDictionary<Task, ProcessThread> Processes = new ConcurrentDictionary<Task, ProcessThread>();
 
         /// <summary>
-        /// True if run as Process Thread
+        /// True if run in Process Thread
         /// </summary>
         public static bool IsProcessThread => isProcessThread;
 
@@ -40,13 +40,16 @@ namespace AZI.ProcessThreads
         /// </summary>
         public bool CreateNoWindow = true;
 
+        /// <summary>
+        /// Throws OperationCanceledException to inform Task about canceled operation (IsCanceled true) if cancellation signal was set by Process Threads manager.
+        /// </summary>
         public static void ThrowIfCancellationRequested()
         {
             if (IsCancelled) throw new OperationCanceledException();
         }
 
         /// <summary>
-        /// Cancellation Token If run in Process Thread
+        /// Returns true if parent send cancellation signal.
         /// </summary>
         public static bool IsCancelled
         {
