@@ -14,7 +14,7 @@ public static string TestMethod(int param)
 
 public void StartProcess()
 {
-	var manager = new ProcessManager();
+	var manager = new ProcessThreadsManager();
     var task = manager.Start(TestMethod, 15);
     Console.WriteLine(task.Result); // *150*
 }
@@ -35,7 +35,7 @@ public static void TestCancel()
 
 public void StartTestCancel()
 {
-	var manager = new ProcessManager();
+	var manager = new ProcessThreadsManager();
     var task = manager.Start(TestCancel);
     Thread.Sleep(200);
     manager[task].Cancel();

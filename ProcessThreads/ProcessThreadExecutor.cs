@@ -24,8 +24,8 @@ namespace AZI.ProcessThreads
 
             Console.Title = args[2] + "." + args[3];
 
-            ProcessManager.isProcessThread = true;
-            ProcessManager.cancellationEvent = EventWaitHandle.OpenExisting(args[4]);
+            ProcessThreadsManager.isProcessThread = true;
+            ProcessThreadsManager.cancellationEvent = EventWaitHandle.OpenExisting(args[4]);
 
             try
             {
@@ -55,7 +55,7 @@ namespace AZI.ProcessThreads
             }
             catch (OperationCanceledException)
             {
-                ProcessManager.cancellationEvent.Set();
+                ProcessThreadsManager.cancellationEvent.Set();
                 return 1;
             }
             catch (Exception e)

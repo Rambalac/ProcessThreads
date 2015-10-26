@@ -9,7 +9,7 @@ namespace AZI.ProcessThreads
     /// <summary>
     /// Process Thread information
     /// </summary>
-    public class ProcessThreadsManager
+    public class ProcessThread
     {
         /// <summary>
         /// Process object in which thread is started
@@ -26,11 +26,11 @@ namespace AZI.ProcessThreads
         public readonly EventWaitHandle CancellationHandle;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="ProcessThreadsManager" /> class.
+        /// Initializes a new instance of the <see cref="ProcessThread" /> class.
         /// </summary>
         /// <param name="process">Process object for Process Thread</param>
         /// <param name="pipe">Optional server-sided named pipe</param>
-        internal ProcessThreadsManager(Process process, Task task, EventWaitHandle cancellationHandle, NamedPipeServerStream pipe = null)
+        internal ProcessThread(Process process, Task task, EventWaitHandle cancellationHandle, NamedPipeServerStream pipe = null)
         {
             if (process == null) throw new ArgumentNullException(nameof(process));
 

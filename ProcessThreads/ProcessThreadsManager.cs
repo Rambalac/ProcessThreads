@@ -18,7 +18,7 @@ namespace AZI.ProcessThreads
     /// <summary>
     /// Manager for process threads
     /// </summary>
-    public class ProcessManager
+    public class ProcessThreadsManager
     {
 
         internal static bool isProcessThread = false;
@@ -28,7 +28,7 @@ namespace AZI.ProcessThreads
         /// <summary>
         /// List of started Process Threads
         /// </summary>
-        readonly ConcurrentDictionary<Task, ProcessThreadsManager> Processes = new ConcurrentDictionary<Task, ProcessThreadsManager>();
+        readonly ConcurrentDictionary<Task, ProcessThread> Processes = new ConcurrentDictionary<Task, ProcessThread>();
 
         /// <summary>
         /// True if run as Process Thread
@@ -62,7 +62,7 @@ namespace AZI.ProcessThreads
         /// </summary>
         /// <param name="task">Task associated to Process Thread</param>
         /// <returns>Process Thread control object</returns>
-        public ProcessThreadsManager this[Task task]
+        public ProcessThread this[Task task]
         {
             get { return Processes[task]; }
         }
@@ -132,7 +132,7 @@ namespace AZI.ProcessThreads
 
             proc.Start();
 
-            Processes.TryAdd(exited.Task, new ProcessThreadsManager(proc, exited.Task, cancelHndl));
+            Processes.TryAdd(exited.Task, new ProcessThread(proc, exited.Task, cancelHndl));
             return exited.Task;
         }
 
@@ -166,7 +166,7 @@ namespace AZI.ProcessThreads
             };
 
             proc.Start();
-            Processes.TryAdd(exited.Task, new ProcessThreadsManager(proc, exited.Task, cancelHndl, pipe));
+            Processes.TryAdd(exited.Task, new ProcessThread(proc, exited.Task, cancelHndl, pipe));
 
             pipe.WaitForConnection();
             return exited.Task;
@@ -204,7 +204,7 @@ namespace AZI.ProcessThreads
 
             proc.Start();
 
-            Processes.TryAdd(exited.Task, new ProcessThreadsManager(proc, exited.Task, cancelHndl, pipe));
+            Processes.TryAdd(exited.Task, new ProcessThread(proc, exited.Task, cancelHndl, pipe));
 
             pipe.BeginWaitForConnection((ar) =>
             {

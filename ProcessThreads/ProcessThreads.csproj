@@ -61,9 +61,9 @@
   <ItemGroup>
     <Compile Include="InvocationType.cs" />
     <Compile Include="NativeMethods.cs" />
-    <Compile Include="ProcessManager.cs" />
     <Compile Include="ProcessThread.cs" />
     <Compile Include="ProcessThreadExecutor.cs" />
+    <Compile Include="ProcessThreadsManager.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

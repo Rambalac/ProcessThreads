@@ -8,7 +8,7 @@ namespace AZI.ProcessThreads.Tests
 {
     public class ProcessManagerTestsBase
     {
-        protected ProcessManager manager = new ProcessManager();
+        protected ProcessThreadsManager manager = new ProcessThreadsManager();
 
     }
     public class ProcessManagerTests : ProcessManagerTestsBase
@@ -83,7 +83,7 @@ namespace AZI.ProcessThreads.Tests
 
         public static void TestCancel()
         {
-            while (!ProcessManager.IsCancelled)
+            while (!ProcessThreadsManager.IsCancelled)
             {
                 Thread.Sleep(50);
             }
@@ -109,7 +109,7 @@ namespace AZI.ProcessThreads.Tests
             while (true)
             {
                 Thread.Sleep(50);
-                ProcessManager.ThrowIfCancellationRequested();
+                ProcessThreadsManager.ThrowIfCancellationRequested();
             }
         }
 
