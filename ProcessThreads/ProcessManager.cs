@@ -11,11 +11,8 @@ namespace ProcessThreads
     using System.IO;
     using System.IO.Pipes;
     using System.Reflection;
-    using System.Runtime.Serialization;
     using System.Runtime.Serialization.Formatters.Binary;
-    using System.Threading;
     using System.Threading.Tasks;
-    using System.Linq;
     using System.Runtime.InteropServices;
 
     /// <summary>
@@ -23,9 +20,9 @@ namespace ProcessThreads
     /// </summary>
     public class ProcessManager
     {
-        [DllImport("kernel32.dll")]
-        static extern ErrorModes SetErrorMode(ErrorModes uMode);
-
+        /// <summary>
+        /// Windows application error modes
+        /// </summary>
         [Flags]
         public enum ErrorModes : uint
         {
@@ -35,6 +32,21 @@ namespace ProcessThreads
             SEM_NOGPFAULTERRORBOX = 0x0002,
             SEM_NOOPENFILEERRORBOX = 0x8000
         }
+
+        enum InvokeType
+        {
+            Simple,
+            Pipe,
+            OneParamOneResult
+        }
+
+        /// <summary>
+        /// Sets error mode for current application
+        /// </summary>
+        /// <param name="uMode">Error mode</param>
+        /// <returns></returns>
+        [DllImport("kernel32.dll")]
+        static extern ErrorModes SetErrorMode(ErrorModes uMode);
 
         /// <summary>
         /// List of started Process Threads
@@ -56,6 +68,11 @@ namespace ProcessThreads
             /// </summary>
             public readonly NamedPipeServerStream Pipe;
 
+            /// <summary>
+            /// Initializes a new instance of the <see cref="ProcessThread" /> class.
+            /// </summary>
+            /// <param name="process">Process object for Process Thread</param>
+            /// <param name="pipe">Optional server-sided named pipe</param>
             internal ProcessThread(Process process, NamedPipeServerStream pipe = null)
             {
                 if (process == null) throw new ArgumentNullException(nameof(process));
@@ -66,9 +83,20 @@ namespace ProcessThreads
 
         }
 
-
+        /// <summary>
+        /// <see cref="ProcessStartInfo" />
+        /// </summary>
         public bool CreateNoWindow = true;
 
+        /// <summary>
+        /// Creates Process object, but does not start
+        /// </summary>
+        /// <typeparam name="T">Type for TaskCompletionSource type parameter</typeparam>
+        /// <param name="method">Method to run in new preocess</param>
+        /// <param name="type">Type of method parameters</param>
+        /// <param name="exited">Responce object to create Task</param>
+        /// <param name="arguments">Additional command line argument</param>
+        /// <returns>New Process object</returns>
         Process BuildInfo<T>(MethodInfo method, InvokeType type, TaskCompletionSource<T> exited, string arguments = "")
         {
             var assemblyLocation = method.Module.Assembly.Location;
@@ -99,7 +127,7 @@ namespace ProcessThreads
         /// <summary>
         /// Starts Process Thread without parameters
         /// </summary>
-        /// <param name="method">Static method to start in Process Thread</param>
+        /// <param name="method">Static method to start</param>
         public Task Start(Action method)
         {
             if (!method.Method.IsStatic) throw new ArgumentException("Method has to be static", nameof(method));
@@ -124,7 +152,7 @@ namespace ProcessThreads
         /// <summary>
         /// Starts Process Thread with bi-directional pipe for communication
         /// </summary>
-        /// <param name="method"></param>
+        /// <param name="method">Static method to start</param>
         /// <returns></returns>
         public Task Start(Action<NamedPipeClientStream> method, out NamedPipeServerStream pipe)
         {
@@ -151,13 +179,14 @@ namespace ProcessThreads
             return exited.Task;
         }
 
-        enum InvokeType
-        {
-            Simple,
-            Pipe,
-            OneParamOneResult
-        }
-
+        /// <summary>
+        /// Start Process Thread with parameter and result
+        /// </summary>
+        /// <typeparam name="P">Parameter type</typeparam>
+        /// <typeparam name="R">Result type</typeparam>
+        /// <param name="method">Static method to start</param>
+        /// <param name="param">Parameter to pass to the method</param>
+        /// <returns>Result of method</returns>
         public Task<R> Start<P, R>(Func<P, R> method, P param)
         {
             if (!method.Method.IsStatic) throw new ArgumentException("Method has to be static", nameof(method));
@@ -211,6 +240,11 @@ namespace ProcessThreads
             return exited.Task;
         }
 
+        /// <summary>
+        /// Main is used to start new process and call method with parameters passed in args
+        /// </summary>
+        /// <param name="args"></param>
+        /// <returns>Success - 0, Error anything other</returns>
         static int Main(string[] args)
         {
             if (args.Length < 4) return -1;
@@ -245,6 +279,12 @@ namespace ProcessThreads
             return -1;
         }
 
+        /// <summary>
+        /// Calls method with one parameter and result. Deserializes parameter and serialize resut.
+        /// </summary>
+        /// <param name="type">Type containing method</param>
+        /// <param name="methodName">Name of method to call</param>
+        /// <param name="pipeName">Name of pipe to pass parameter and result</param>
         static void InvokeWithOneParamOneResult(Type type, string methodName, string pipeName)
         {
             var pipe = new NamedPipeClientStream(pipeName);
@@ -264,6 +304,12 @@ namespace ProcessThreads
             pipe.Close();
         }
 
+        /// <summary>
+        /// Calls method with bi-directional pipe.
+        /// </summary>
+        /// <param name="type">Type containing method</param>
+        /// <param name="methodName">Name of method to call</param>
+        /// <param name="pipeName">Name of pipe to pass</param>
         static void InvokeWithPipe(Type type, string methodName, string pipeName)
         {
             var pipe = new NamedPipeClientStream(pipeName);
@@ -276,6 +322,11 @@ namespace ProcessThreads
             pipe.Close();
         }
 
+        /// <summary>
+        /// Calls method.
+        /// </summary>
+        /// <param name="type">Type containing method</param>
+        /// <param name="methodName">Name of method to call</param>
         static void InvokeSimple(Type type, string methodName)
         {
             var method = type.GetMethod(methodName);
