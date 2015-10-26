@@ -1,0 +1,43 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|AnyCPU">
+      <Configuration>Debug</Configuration>
+      <Platform>AnyCPU</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|AnyCPU">
+      <Configuration>Release</Configuration>
+      <Platform>AnyCPU</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>786c1bb1-5200-4567-a680-e839e24b67be</ProjectGuid>
+  </PropertyGroup>
+  <PropertyGroup>
+    <NuProjPath Condition=" '$(NuProjPath)' == '' ">$(MSBuildExtensionsPath)\NuProj\</NuProjPath>
+  </PropertyGroup>
+  <Import Project="$(NuProjPath)\NuProj.props" Condition="Exists('$(NuProjPath)\NuProj.props')" />
+  <PropertyGroup Label="Configuration">
+    <Id>ProcessThreads</Id>
+    <Version>1.0.0</Version>
+    <Title>ProcessThreads</Title>
+    <Authors>Rambalac</Authors>
+    <Owners>Rambalac</Owners>
+    <Summary>Run static methods in separate process</Summary>
+    <Description>Run static methods in separate process</Description>
+    <ReleaseNotes>
+    </ReleaseNotes>
+    <ProjectUrl>https://github.com/Rambalac/ProcessThreads</ProjectUrl>
+    <LicenseUrl>https://raw.githubusercontent.com/Rambalac/ProcessThreads/master/LICENCE</LicenseUrl>
+    <Copyright>Copyright © Rambalac</Copyright>
+    <Tags>Process multiprocess</Tags>
+    <RequireLicenseAcceptance>true</RequireLicenseAcceptance>
+  </PropertyGroup>
+  <ItemGroup>
+    <Content Include="Readme.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ProcessThreads\ProcessThreads.csproj" />
+  </ItemGroup>
+  <Import Project="$(NuProjPath)\NuProj.targets" />
+</Project>

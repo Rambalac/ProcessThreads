@@ -24,7 +24,7 @@ namespace ProcessThreads
         /// Windows application error modes
         /// </summary>
         [Flags]
-        public enum ErrorModes : uint
+        enum ErrorModes : uint
         {
             SYSTEM_DEFAULT = 0x0,
             SEM_FAILCRITICALERRORS = 0x0001,
@@ -153,6 +153,7 @@ namespace ProcessThreads
         /// Starts Process Thread with bi-directional pipe for communication
         /// </summary>
         /// <param name="method">Static method to start</param>
+        /// <param name="pipe">Bi-directional pipe for interprocess communication</param>
         /// <returns></returns>
         public Task Start(Action<NamedPipeClientStream> method, out NamedPipeServerStream pipe)
         {
