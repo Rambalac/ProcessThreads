@@ -1,10 +1,10 @@
 ﻿using Xunit;
 using System;
-using System.Threading.Tasks;
 using System.IO.Pipes;
 using System.IO;
+using System.Threading;
 
-namespace ProcessThreads.Tests
+namespace AZI.ProcessThreads.Tests
 {
     public class ProcessManagerTestsBase
     {
@@ -13,7 +13,6 @@ namespace ProcessThreads.Tests
     }
     public class ProcessManagerTests : ProcessManagerTestsBase
     {
-
         public static void TestSimple()
         {
         }
@@ -21,7 +20,7 @@ namespace ProcessThreads.Tests
         [Fact]
         public void StartTestSimple()
         {
-            Task task4 = manager.Start(TestSimple);
+            var task = manager.Start(TestSimple);
         }
 
         public static void TestPipe(NamedPipeClientStream pipe)
@@ -77,9 +76,56 @@ namespace ProcessThreads.Tests
         [Fact]
         public void StartTestStackOverflowException()
         {
-            Task task4 = manager.Start(TestException);
-            var ex = Assert.Throws<AggregateException>(() => task4.Wait());
+            var task = manager.Start(TestException);
+            var ex = Assert.Throws<AggregateException>(() => task.Wait());
             Assert.Equal("Process Thread crashed", ex.InnerException.Message);
+        }
+
+        public static void TestCancel()
+        {
+            while (!ProcessManager.IsCancelled)
+            {
+                Thread.Sleep(50);
+            }
+        }
+
+        [Fact]
+        public void StartTestCancel()
+        {
+            var task = manager.Start(TestCancel);
+            Thread.Sleep(200);
+            Assert.False(task.IsCompleted);
+
+            manager[task].Cancel();
+
+            Thread.Sleep(200);
+            Assert.True(task.IsCompleted);
+            Assert.False(task.IsCanceled);
+            Assert.False(task.IsFaulted);
+        }
+
+        public static void TestCancelException()
+        {
+            while (true)
+            {
+                Thread.Sleep(50);
+                ProcessManager.ThrowIfCancellationRequested();
+            }
+        }
+
+        [Fact]
+        public void StartTestCancelException()
+        {
+            var task = manager.Start(TestCancelException);
+            Thread.Sleep(200);
+            Assert.False(task.IsCompleted);
+
+            manager[task].Cancel();
+
+            Thread.Sleep(200);
+            Assert.True(task.IsCompleted);
+            Assert.True(task.IsCanceled);
+            Assert.False(task.IsFaulted);
         }
     }
 }

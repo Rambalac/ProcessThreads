@@ -3,101 +3,80 @@
 // GNU GENERAL PUBLIC LICENSE
 // </copyright>
 //-----------------------------------------------------------------------
-namespace ProcessThreads
+namespace AZI.ProcessThreads
 {
     using System;
-    using System.Collections.Generic;
     using System.Diagnostics;
     using System.IO;
     using System.IO.Pipes;
     using System.Reflection;
     using System.Runtime.Serialization.Formatters.Binary;
     using System.Threading.Tasks;
-    using System.Runtime.InteropServices;
+    using System.Threading;
+    using System.Collections.Concurrent;
 
     /// <summary>
     /// Manager for process threads
     /// </summary>
     public class ProcessManager
     {
-        /// <summary>
-        /// Windows application error modes
-        /// </summary>
-        [Flags]
-        enum ErrorModes : uint
-        {
-            SYSTEM_DEFAULT = 0x0,
-            SEM_FAILCRITICALERRORS = 0x0001,
-            SEM_NOALIGNMENTFAULTEXCEPT = 0x0004,
-            SEM_NOGPFAULTERRORBOX = 0x0002,
-            SEM_NOOPENFILEERRORBOX = 0x8000
-        }
 
-        enum InvokeType
-        {
-            Simple,
-            Pipe,
-            OneParamOneResult
-        }
+        internal static bool isProcessThread = false;
 
-        /// <summary>
-        /// Sets error mode for current application
-        /// </summary>
-        /// <param name="uMode">Error mode</param>
-        /// <returns></returns>
-        [DllImport("kernel32.dll")]
-        static extern ErrorModes SetErrorMode(ErrorModes uMode);
+        internal static EventWaitHandle cancellationEvent = null;
 
         /// <summary>
         /// List of started Process Threads
         /// </summary>
-        public readonly List<ProcessThread> Processes = new List<ProcessThread>();
+        readonly ConcurrentDictionary<Task, ProcessThreadsManager> Processes = new ConcurrentDictionary<Task, ProcessThreadsManager>();
 
         /// <summary>
-        /// Process Thread information
+        /// True if run as Process Thread
         /// </summary>
-        public class ProcessThread
+        public static bool IsProcessThread => isProcessThread;
+
+        /// <summary>
+        /// See <see cref="ProcessStartInfo" />
+        /// </summary>
+        public bool CreateNoWindow = true;
+
+        public static void ThrowIfCancellationRequested()
         {
-            /// <summary>
-            /// Process object in which thread is started
-            /// </summary>
-            public readonly Process Process;
-
-            /// <summary>
-            /// Communication pipe. Can be null.
-            /// </summary>
-            public readonly NamedPipeServerStream Pipe;
-
-            /// <summary>
-            /// Initializes a new instance of the <see cref="ProcessThread" /> class.
-            /// </summary>
-            /// <param name="process">Process object for Process Thread</param>
-            /// <param name="pipe">Optional server-sided named pipe</param>
-            internal ProcessThread(Process process, NamedPipeServerStream pipe = null)
-            {
-                if (process == null) throw new ArgumentNullException(nameof(process));
-
-                Process = process;
-                Pipe = pipe;
-            }
-
+            if (IsCancelled) throw new OperationCanceledException();
         }
 
         /// <summary>
-        /// <see cref="ProcessStartInfo" />
+        /// Cancellation Token If run in Process Thread
         /// </summary>
-        public bool CreateNoWindow = true;
+        public static bool IsCancelled
+        {
+            get
+            {
+                if (!isProcessThread) throw new InvalidOperationException("Not Process Thread");
+                return cancellationEvent.WaitOne(0);
+            }
+        }
+
+        /// <summary>
+        /// Returns Process Thread control object by Task
+        /// </summary>
+        /// <param name="task">Task associated to Process Thread</param>
+        /// <returns>Process Thread control object</returns>
+        public ProcessThreadsManager this[Task task]
+        {
+            get { return Processes[task]; }
+        }
 
         /// <summary>
         /// Creates Process object, but does not start
         /// </summary>
         /// <typeparam name="T">Type for TaskCompletionSource type parameter</typeparam>
-        /// <param name="method">Method to run in new preocess</param>
+        /// <param name="method">Method to run in new process</param>
         /// <param name="type">Type of method parameters</param>
-        /// <param name="exited">Responce object to create Task</param>
+        /// <param name="exited">Response object to create Task</param>
         /// <param name="arguments">Additional command line argument</param>
         /// <returns>New Process object</returns>
-        Process BuildInfo<T>(MethodInfo method, InvokeType type, TaskCompletionSource<T> exited, string arguments = "")
+        Process BuildInfo<T>(MethodInfo method, InvocationType type, TaskCompletionSource<T> exited, params string[] arguments)
         {
             var assemblyLocation = method.Module.Assembly.Location;
             var typeName = method.ReflectedType.FullName;
@@ -108,7 +87,7 @@ namespace ProcessThreads
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = GetType().Assembly.Location,
-                    Arguments = $"{(int)type} {assemblyLocation} {typeName} {methodName} " + arguments,
+                    Arguments = $"{(int)type} {assemblyLocation} {typeName} {methodName} " + string.Join(" ", arguments),
                     RedirectStandardError = true,
                     CreateNoWindow = CreateNoWindow,
                     UseShellExecute = false,
@@ -132,20 +111,28 @@ namespace ProcessThreads
         {
             if (!method.Method.IsStatic) throw new ArgumentException("Method has to be static", nameof(method));
 
+            string cancelHndlName = Guid.NewGuid().ToString();
+            var cancelHndl = new EventWaitHandle(false, EventResetMode.ManualReset, cancelHndlName);
+
             var exited = new TaskCompletionSource<bool>();
-            var proc = BuildInfo(method.Method, InvokeType.Simple, exited);
+            var proc = BuildInfo(method.Method, InvocationType.Simple, exited, cancelHndlName);
 
 
             proc.Exited += (sender, args) =>
             {
-                if (proc.ExitCode == 0) exited.SetResult(true);
+                if (proc.ExitCode == 0)
+                    exited.SetResult(true);
+                else
+                    if (proc.ExitCode == 1) exited.SetCanceled();
                 else
                     exited.SetException(new Exception("Process Thread crashed"));
+
                 proc.Dispose();
             };
 
             proc.Start();
-            Processes.Add(new ProcessThread(proc));
+
+            Processes.TryAdd(exited.Task, new ProcessThreadsManager(proc, exited.Task, cancelHndl));
             return exited.Task;
         }
 
@@ -162,11 +149,16 @@ namespace ProcessThreads
             string pipeName = Guid.NewGuid().ToString();
             pipe = new NamedPipeServerStream(pipeName);
             var exited = new TaskCompletionSource<bool>();
-            var proc = BuildInfo(method.Method, InvokeType.Pipe, exited, pipeName);
+            var cancelHndl = new EventWaitHandle(false, EventResetMode.ManualReset, pipeName);
+
+            var proc = BuildInfo(method.Method, InvocationType.Pipe, exited, pipeName);
 
             proc.Exited += (sender, args) =>
             {
-                if (proc.ExitCode == 0) exited.SetResult(true);
+                if (proc.ExitCode == 0)
+                    exited.SetResult(true);
+                else
+                    if (proc.ExitCode == 1) exited.SetCanceled();
                 else
                     exited.SetException(new Exception("Process Thread crashed"));
 
@@ -174,8 +166,8 @@ namespace ProcessThreads
             };
 
             proc.Start();
-            var res = new ProcessThread(proc, pipe);
-            Processes.Add(res);
+            Processes.TryAdd(exited.Task, new ProcessThreadsManager(proc, exited.Task, cancelHndl, pipe));
+
             pipe.WaitForConnection();
             return exited.Task;
         }
@@ -197,17 +189,22 @@ namespace ProcessThreads
             string pipeName = Guid.NewGuid().ToString();
             var pipe = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
             var exited = new TaskCompletionSource<R>();
+            var cancelHndl = new EventWaitHandle(false, EventResetMode.ManualReset, pipeName);
 
-            var proc = BuildInfo(method.Method, InvokeType.OneParamOneResult, exited, pipeName);
+            var proc = BuildInfo(method.Method, InvocationType.OneParamOneResult, exited, pipeName);
             var formatter = new BinaryFormatter();
             proc.Exited += (sender, args) =>
             {
-                if (proc.ExitCode != 0) exited.SetException(new Exception("Process Thread crashed"));
+                if (proc.ExitCode == 1)
+                    exited.SetCanceled();
+                else
+                    if (proc.ExitCode != 0) exited.SetException(new Exception("Process Thread crashed"));
                 proc.Dispose();
             };
 
             proc.Start();
-            Processes.Add(new ProcessThread(proc, pipe));
+
+            Processes.TryAdd(exited.Task, new ProcessThreadsManager(proc, exited.Task, cancelHndl, pipe));
 
             pipe.BeginWaitForConnection((ar) =>
             {
@@ -241,97 +238,5 @@ namespace ProcessThreads
             return exited.Task;
         }
 
-        /// <summary>
-        /// Main is used to start new process and call method with parameters passed in args
-        /// </summary>
-        /// <param name="args"></param>
-        /// <returns>Success - 0, Error anything other</returns>
-        static int Main(string[] args)
-        {
-            if (args.Length < 4) return -1;
-            SetErrorMode(ErrorModes.SEM_NOGPFAULTERRORBOX);
-
-            Console.Title = args[2] + "." + args[3];
-            //Console.WriteLine(string.Join(",", args));
-
-            try
-            {
-                var assembly = Assembly.LoadFile(args[1]);
-                var type = assembly.GetType(args[2]);
-                switch ((InvokeType)int.Parse(args[0]))
-                {
-                    case InvokeType.Simple:
-                        InvokeSimple(type, args[3]);
-                        break;
-                    case InvokeType.Pipe:
-                        InvokeWithPipe(type, args[3], args[4]);
-                        break;
-                    case InvokeType.OneParamOneResult:
-                        InvokeWithOneParamOneResult(type, args[3], args[4]);
-                        break;
-                }
-                return 0;
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e);
-                Console.Error.WriteLine(e);
-            }
-            return -1;
-        }
-
-        /// <summary>
-        /// Calls method with one parameter and result. Deserializes parameter and serialize resut.
-        /// </summary>
-        /// <param name="type">Type containing method</param>
-        /// <param name="methodName">Name of method to call</param>
-        /// <param name="pipeName">Name of pipe to pass parameter and result</param>
-        static void InvokeWithOneParamOneResult(Type type, string methodName, string pipeName)
-        {
-            var pipe = new NamedPipeClientStream(pipeName);
-
-            pipe.Connect();
-
-            var formatter = new BinaryFormatter();
-            var param = formatter.Deserialize(pipe);
-
-            var method = type.GetMethod(methodName, new Type[] { param.GetType() });
-
-            object result = method.Invoke(null, new object[] { param });
-
-            formatter.Serialize(pipe, result);
-
-            pipe.WaitForPipeDrain();
-            pipe.Close();
-        }
-
-        /// <summary>
-        /// Calls method with bi-directional pipe.
-        /// </summary>
-        /// <param name="type">Type containing method</param>
-        /// <param name="methodName">Name of method to call</param>
-        /// <param name="pipeName">Name of pipe to pass</param>
-        static void InvokeWithPipe(Type type, string methodName, string pipeName)
-        {
-            var pipe = new NamedPipeClientStream(pipeName);
-            pipe.Connect();
-
-            var method = type.GetMethod(methodName);
-            method.Invoke(null, new object[] { pipe });
-
-            pipe.WaitForPipeDrain();
-            pipe.Close();
-        }
-
-        /// <summary>
-        /// Calls method.
-        /// </summary>
-        /// <param name="type">Type containing method</param>
-        /// <param name="methodName">Name of method to call</param>
-        static void InvokeSimple(Type type, string methodName)
-        {
-            var method = type.GetMethod(methodName);
-            method.Invoke(null, new object[] { });
-        }
     }
 }

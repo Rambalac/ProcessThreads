@@ -7,8 +7,8 @@
     <ProjectGuid>{CD99B126-95EE-4D0A-89E6-9D47A87F618D}</ProjectGuid>
     <OutputType>Exe</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>ProcessThreads</RootNamespace>
-    <AssemblyName>ProcessThreads</AssemblyName>
+    <RootNamespace>AZI.ProcessThreads</RootNamespace>
+    <AssemblyName>AZI.ProcessThreads</AssemblyName>
     <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <PublishUrl>publish\</PublishUrl>
@@ -43,10 +43,10 @@
     <DefineConstants>TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
-    <DocumentationFile>bin\Release\ProcessThreads.XML</DocumentationFile>
+    <DocumentationFile>bin\Release\AZI.ProcessThreads.xml</DocumentationFile>
   </PropertyGroup>
   <PropertyGroup>
-    <StartupObject>ProcessThreads.ProcessManager</StartupObject>
+    <StartupObject>AZI.ProcessThreads.ProcessThreadExecutor</StartupObject>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
@@ -59,7 +59,11 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="InvocationType.cs" />
+    <Compile Include="NativeMethods.cs" />
     <Compile Include="ProcessManager.cs" />
+    <Compile Include="ProcessThread.cs" />
+    <Compile Include="ProcessThreadExecutor.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
