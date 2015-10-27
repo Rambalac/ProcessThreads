@@ -57,10 +57,44 @@ namespace AZI.ProcessThreads.Tests
             Assert.Equal("!!!123!!!", manager.Start(TestParam, "123").Result);
         }
 
+        public static string TestParam(object param)
+        {
+            return "Trick!";
+        }
+
+        [Fact]
+        public void StartTestParamTypes()
+        {
+            Assert.Equal("Trick!", manager.Start(TestParam, (object)"123").Result);
+        }
+
+        public static string TestParam2(string p1, int p2)
+        {
+            return p1 + p2;
+        }
+
+        [Fact]
+        public void StartTestParam2()
+        {
+            Assert.Equal("123321", manager.Start(TestParam2, "123", 321).Result);
+        }
+
+        public static string TestParam3(string p1, int p2, bool p3)
+        {
+            return p1 + p2 + p3;
+        }
+
+        [Fact]
+        public void StartTestParam3()
+        {
+            Assert.Equal("123321False", manager.Start(TestParam3, "123", 321, false).Result);
+        }
+
         public static string TestParam(int param)
         {
             return "!!!" + (param * 10) + "!!!";
         }
+
 
         [Fact]
         public void StartTestSerializationInt()

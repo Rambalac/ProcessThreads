@@ -1,20 +1,20 @@
-﻿//-----------------------------------------------------------------------
-// <copyright file="ProcessManager.cs" company="Rambalac">
+﻿using System;
+using System.Diagnostics;
+using System.IO;
+using System.IO.Pipes;
+using System.Reflection;
+using System.Runtime.Serialization.Formatters.Binary;
+using System.Threading.Tasks;
+using System.Threading;
+using System.Collections.Concurrent;
+
+//-----------------------------------------------------------------------
+// <copyright file="ProcessThreadsManager.cs" company="AZI">
 // GNU GENERAL PUBLIC LICENSE
 // </copyright>
 //-----------------------------------------------------------------------
 namespace AZI.ProcessThreads
 {
-    using System;
-    using System.Diagnostics;
-    using System.IO;
-    using System.IO.Pipes;
-    using System.Reflection;
-    using System.Runtime.Serialization.Formatters.Binary;
-    using System.Threading.Tasks;
-    using System.Threading;
-    using System.Collections.Concurrent;
-
     /// <summary>
     /// Manager for process threads
     /// </summary>
@@ -178,23 +178,67 @@ namespace AZI.ProcessThreads
         /// <summary>
         /// Start Process Thread with parameter and result
         /// </summary>
-        /// <typeparam name="P">Parameter type</typeparam>
+        /// <typeparam name="P1">Parameter type</typeparam>
         /// <typeparam name="R">Result type</typeparam>
         /// <param name="method">Static method to start</param>
-        /// <param name="param">Parameter to pass to the method</param>
+        /// <param name="param1">Parameter to pass to the method</param>
         /// <returns>Result of method</returns>
-        public Task<R> Start<P, R>(Func<P, R> method, P param)
+        public Task<R> Start<P1, R>(Func<P1, R> method, P1 param1)
         {
-            if (!method.Method.IsStatic) throw new ArgumentException("Method has to be static", nameof(method));
-            if (!typeof(P).IsSerializable) throw new ArgumentException("Parameter has to be serializable", nameof(param));
-            if (!typeof(R).IsSerializable) throw new ArgumentException("Result has to be serializable", nameof(param));
+            return StartVariableParams<R>(method.GetMethodInfo(), new object[] {
+                new Type[] { typeof(P1) },
+                new object[] { param1 } });
+        }
+
+        /// <summary>
+        /// Start Process Thread with parameter and result
+        /// </summary>
+        /// <typeparam name="P1">Parameter1 type</typeparam>
+        /// <typeparam name="P2">Parameter2 type</typeparam>
+        /// <typeparam name="R">Result type</typeparam>
+        /// <param name="method">Static method to start</param>
+        /// <param name="param1">Parameter1 to pass to the method</param>
+        /// <param name="param2">Parameter2 to pass to the method</param>
+        /// <returns>Result of method</returns>
+        public Task<R> Start<P1, P2, R>(Func<P1, P2, R> method, P1 param1, P2 param2)
+        {
+            return StartVariableParams<R>(method.GetMethodInfo(), new object[] {
+                new Type[] { typeof(P1), typeof(P2) },
+                new object[] { param1, param2 } });
+        }
+
+        /// <summary>
+        /// Start Process Thread with parameter and result
+        /// </summary>
+        /// <typeparam name="P1">Parameter1 type</typeparam>
+        /// <typeparam name="P2">Parameter2 type</typeparam>
+        /// <typeparam name="P3">Parameter3 type</typeparam>
+        /// <typeparam name="R">Result type</typeparam>
+        /// <param name="method">Static method to start</param>
+        /// <param name="param1">Parameter1 to pass to the method</param>
+        /// <param name="param2">Parameter2 to pass to the method</param>
+        /// <param name="param3">Parameter3 to pass to the method</param>
+        /// <returns>Result of method</returns>
+        public Task<R> Start<P1, P2, P3, R>(Func<P1, P2, P3, R> method, P1 param1, P2 param2, P3 param3)
+        {
+            return StartVariableParams<R>(method.GetMethodInfo(), new object[] {
+                new Type[] { typeof(P1), typeof(P2), typeof(P3) },
+                new object[] { param1, param2, param3 } });
+        }
+
+        Task<R> StartVariableParams<R>(MethodInfo method, object[] parameters)
+        {
+            if (!method.IsStatic) throw new ArgumentException("Method has to be static", nameof(method));
+            if (!typeof(R).IsSerializable) throw new ArgumentException("Result has to be serializable", typeof(R).FullName);
+            foreach (var p in parameters)
+                if (!p.GetType().IsSerializable) throw new ArgumentException($"Parameter has to be serializable", p.GetType().FullName);
 
             string pipeName = Guid.NewGuid().ToString();
             var pipe = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
             var exited = new TaskCompletionSource<R>();
             var cancelHndl = new EventWaitHandle(false, EventResetMode.ManualReset, pipeName);
 
-            var proc = BuildInfo(method.Method, InvocationType.OneParamOneResult, exited, pipeName);
+            var proc = BuildInfo(method, InvocationType.ParamsAndResult, exited, pipeName);
             var formatter = new BinaryFormatter();
             proc.Exited += (sender, args) =>
             {
@@ -212,7 +256,7 @@ namespace AZI.ProcessThreads
             pipe.BeginWaitForConnection((ar) =>
             {
                 pipe.EndWaitForConnection(ar);
-                formatter.Serialize(pipe, param);
+                formatter.Serialize(pipe, parameters);
 
                 var buf = new byte[1024];
                 var memory = new MemoryStream();

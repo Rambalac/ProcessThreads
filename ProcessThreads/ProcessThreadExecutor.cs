@@ -1,7 +1,6 @@
 ﻿using System;
 using System.IO.Pipes;
 using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Threading;
 
@@ -41,8 +40,8 @@ namespace AZI.ProcessThreads
                         case InvocationType.Pipe:
                             InvokeWithPipe(type, args[3], args[4]);
                             break;
-                        case InvocationType.OneParamOneResult:
-                            InvokeWithOneParamOneResult(type, args[3], args[4]);
+                        case InvocationType.ParamsAndResult:
+                            InvokeWithParamsAndResult(type, args[3], args[4]);
                             break;
                     }
                 }
@@ -72,18 +71,20 @@ namespace AZI.ProcessThreads
         /// <param name="type">Type containing method</param>
         /// <param name="methodName">Name of method to call</param>
         /// <param name="pipeName">Name of pipe to pass parameter and result</param>
-        static void InvokeWithOneParamOneResult(Type type, string methodName, string pipeName)
+        static void InvokeWithParamsAndResult(Type type, string methodName, string pipeName)
         {
             var pipe = new NamedPipeClientStream(pipeName);
 
             pipe.Connect();
 
             var formatter = new BinaryFormatter();
-            var param = formatter.Deserialize(pipe);
 
-            var method = type.GetMethod(methodName, new Type[] { param.GetType() });
+            var pars = (object[])formatter.Deserialize(pipe);
+            var types = (Type[])pars[0];
 
-            object result = method.Invoke(null, new object[] { param });
+            var method = type.GetMethod(methodName, types);
+
+            object result = method.Invoke(null, (object[])pars[1]);
 
             formatter.Serialize(pipe, result);
 

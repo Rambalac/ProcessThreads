@@ -4,6 +4,6 @@
     {
         Simple,
         Pipe,
-        OneParamOneResult
+        ParamsAndResult
     }
 }
