@@ -1,7 +1,14 @@
 Process threads
 ===============
 
-Runs static methods in separate process
+Runs static methods in separate process.
+
+Because method run in separate process you can not access the same data in static fields. Any change in static data in one process has no effect for other. For realtime data exchange you can use Start with pipe as out parameter
+```C#
+var manager = new ProcessThreadsManager();
+NamedPipeServerStream pipe;
+manager.Start(staticMethod, out pipe);
+```
 
 Example
 -------
@@ -14,7 +21,7 @@ public static string TestMethod(int param)
 
 public void StartProcess()
 {
-	var manager = new ProcessThreadsManager();
+    var manager = new ProcessThreadsManager();
     var task = manager.Start(TestMethod, 15);
     Console.WriteLine(task.Result); // *150*
 }
