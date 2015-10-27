@@ -128,38 +128,6 @@ namespace AZI.ProcessThreads
         }
 
         /// <summary>
-        /// Starts Process Thread without parameters
-        /// </summary>
-        /// <param name="method">Static method to start</param>
-        public Task Start(Action method)
-        {
-            if (!method.Method.IsStatic) throw new ArgumentException("Method has to be static", nameof(method));
-
-            string cancelHndlName = Guid.NewGuid().ToString();
-            var cancelHndl = new EventWaitHandle(false, EventResetMode.ManualReset, cancelHndlName);
-
-            var exited = new TaskCompletionSource<bool>();
-            var proc = BuildInfo(method.Method, InvocationType.Simple, exited, cancelHndlName);
-
-
-            proc.Exited += (sender, args) =>
-            {
-                if (proc.ExitCode == 0)
-                    exited.SetResult(true);
-                else
-                    if (proc.ExitCode == 1) exited.SetCanceled();
-                else
-                    exited.SetException(new Exception("Process Thread crashed"));
-            };
-
-            proc.Start();
-            proc.PriorityClass = PriorityClass;
-
-            Processes.TryAdd(exited.Task, new ProcessThread(proc, exited.Task, cancelHndl));
-            return exited.Task;
-        }
-
-        /// <summary>
         /// Starts Process Thread with bi-directional pipe for communication
         /// </summary>
         /// <param name="method">Static method to start</param>
@@ -193,6 +161,53 @@ namespace AZI.ProcessThreads
 
             pipe.WaitForConnection();
             return exited.Task;
+        }
+
+        /// <summary>
+        /// Starts Process Thread without parameters
+        /// </summary>
+        /// <param name="method">Static method to start</param>
+        public Task Start(Action method)
+        {
+            if (!method.Method.IsStatic) throw new ArgumentException("Method has to be static", nameof(method));
+
+            string cancelHndlName = Guid.NewGuid().ToString();
+            var cancelHndl = new EventWaitHandle(false, EventResetMode.ManualReset, cancelHndlName);
+
+            var exited = new TaskCompletionSource<bool>();
+            var proc = BuildInfo(method.Method, InvocationType.Simple, exited, cancelHndlName);
+
+
+            proc.Exited += (sender, args) =>
+            {
+                if (proc.ExitCode == 0)
+                    exited.SetResult(true);
+                else
+                    if (proc.ExitCode == 1) exited.SetCanceled();
+                else
+                    exited.SetException(new Exception("Process Thread crashed"));
+            };
+
+            proc.Start();
+            proc.PriorityClass = PriorityClass;
+
+            Processes.TryAdd(exited.Task, new ProcessThread(proc, exited.Task, cancelHndl));
+            return exited.Task;
+        }
+
+        /// <summary>
+        /// Start Process Thread with parameter and result
+        /// </summary>
+        /// <typeparam name="P1">Parameter type</typeparam>
+        /// <typeparam name="R">Result type</typeparam>
+        /// <param name="method">Static method to start</param>
+        /// <param name="param1">Parameter to pass to the method</param>
+        /// <returns>Task for method result</returns>
+        public Task<R> Start<R>(Func<R> method)
+        {
+            return StartVariableParams<R>(method.GetMethodInfo(), new object[] {
+                new Type[] { },
+                new object[] { } });
         }
 
         /// <summary>
@@ -251,7 +266,7 @@ namespace AZI.ProcessThreads
             if (!method.IsStatic) throw new ArgumentException("Method has to be static", nameof(method));
             if (!typeof(R).IsSerializable) throw new ArgumentException("Result has to be serializable", typeof(R).FullName);
             foreach (var p in parameters)
-                if (!p.GetType().IsSerializable) throw new ArgumentException($"Parameter has to be serializable", p.GetType().FullName);
+                if (p != null && !p.GetType().IsSerializable) throw new ArgumentException($"Parameter has to be serializable", p.GetType().FullName);
 
             string pipeName = Guid.NewGuid().ToString();
             var pipe = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
