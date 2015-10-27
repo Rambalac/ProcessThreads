@@ -7,6 +7,10 @@ using System.Runtime.Serialization.Formatters.Binary;
 using System.Threading.Tasks;
 using System.Threading;
 using System.Collections.Concurrent;
+using System.Security;
+using System.Linq;
+using System.Collections.Generic;
+using System.Security.Permissions;
 
 //-----------------------------------------------------------------------
 // <copyright file="ProcessThreadsManager.cs" company="AZI">
@@ -18,7 +22,7 @@ namespace AZI.ProcessThreads
     /// <summary>
     /// Manager for process threads
     /// </summary>
-    public class ProcessThreadsManager
+    public class ProcessThreadsManager : IDisposable
     {
 
         internal static bool isProcessThread = false;
@@ -39,6 +43,21 @@ namespace AZI.ProcessThreads
         /// See <see cref="ProcessStartInfo" />
         /// </summary>
         public bool CreateNoWindow = true;
+
+        /// <summary>
+        /// See <see cref="Process">
+        /// </summary>
+        public ProcessPriorityClass PriorityClass = ProcessPriorityClass.Normal;
+
+        /// <summary>
+        /// See <see cref="ProcessStartInfo" />
+        /// </summary>
+        public SecureString Password;
+
+        /// <summary>
+        /// See <see cref="ProcessStartInfo" />
+        /// </summary>
+        public string UserName;
 
         /// <summary>
         /// Throws OperationCanceledException to inform Task about canceled operation (IsCanceled true) if cancellation signal was set by Process Threads manager.
@@ -94,7 +113,9 @@ namespace AZI.ProcessThreads
                     RedirectStandardError = true,
                     CreateNoWindow = CreateNoWindow,
                     UseShellExecute = false,
-                    ErrorDialog = false
+                    ErrorDialog = false,
+                    UserName = UserName,
+                    Password = Password
                 },
                 EnableRaisingEvents = true
             };
@@ -129,11 +150,10 @@ namespace AZI.ProcessThreads
                     if (proc.ExitCode == 1) exited.SetCanceled();
                 else
                     exited.SetException(new Exception("Process Thread crashed"));
-
-                proc.Dispose();
             };
 
             proc.Start();
+            proc.PriorityClass = PriorityClass;
 
             Processes.TryAdd(exited.Task, new ProcessThread(proc, exited.Task, cancelHndl));
             return exited.Task;
@@ -164,11 +184,11 @@ namespace AZI.ProcessThreads
                     if (proc.ExitCode == 1) exited.SetCanceled();
                 else
                     exited.SetException(new Exception("Process Thread crashed"));
-
-                proc.Dispose();
             };
 
             proc.Start();
+            proc.PriorityClass = PriorityClass;
+
             Processes.TryAdd(exited.Task, new ProcessThread(proc, exited.Task, cancelHndl, pipe));
 
             pipe.WaitForConnection();
@@ -246,10 +266,10 @@ namespace AZI.ProcessThreads
                     exited.SetCanceled();
                 else
                     if (proc.ExitCode != 0) exited.SetException(new Exception("Process Thread crashed"));
-                proc.Dispose();
             };
 
             proc.Start();
+            proc.PriorityClass = PriorityClass;
 
             Processes.TryAdd(exited.Task, new ProcessThread(proc, exited.Task, cancelHndl, pipe));
 
@@ -285,5 +305,30 @@ namespace AZI.ProcessThreads
             return exited.Task;
         }
 
+        /// <summary>
+        /// Disposes exited Process Threads and removes from Manager
+        /// </summary>
+        public void CleanUp()
+        {
+            var remove = new List<Task>();
+            foreach (var pair in Processes.Where(p => p.Value.Process.HasExited))
+            {
+                pair.Value.Process.Dispose();
+                remove.Add(pair.Key);
+            }
+            ProcessThread value;
+            foreach (var key in remove)
+                Processes.TryRemove(key, out value);
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+        }
+
+        protected virtual void Dispose(bool v)
+        {
+            Password.Dispose();
+        }
     }
 }

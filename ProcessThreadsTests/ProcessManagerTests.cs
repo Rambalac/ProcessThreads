@@ -3,9 +3,11 @@ using System;
 using System.IO.Pipes;
 using System.IO;
 using System.Threading;
+using System.Diagnostics;
 
 namespace AZI.ProcessThreads.Tests
 {
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Design", "CA1001:TypesThatOwnDisposableFieldsShouldBeDisposable")]
     public class ProcessManagerTestsBase
     {
         protected ProcessThreadsManager manager = new ProcessThreadsManager();
@@ -21,6 +23,8 @@ namespace AZI.ProcessThreads.Tests
         public void StartTestSimple()
         {
             var task = manager.Start(TestSimple);
+            task.Wait();
+            Assert.InRange(DateTime.Now.Subtract(manager[task].Process.ExitTime).Minutes, 0, 5);
         }
 
         public static void TestPipe(NamedPipeClientStream pipe)
