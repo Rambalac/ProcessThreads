@@ -12,17 +12,58 @@ namespace AZI.ProcessThreads.Tests
     {
         protected ProcessThreadsManager manager = new ProcessThreadsManager();
 
+
     }
+
+    [Serializable]
+    public class TestClass
+    {
+        public string teststring = "sdfgsd";
+
+        public string TestMethod(int param)
+        {
+            return teststring + param;
+        }
+    }
+
     public class ProcessManagerTests : ProcessManagerTestsBase
     {
-        public static void TestSimple()
+        static void Main(string[] args)
+        {
+            var test = new ProcessManagerTests();
+            test.manager.CreateNoWindow = false;
+            test.StartTestClassMethod();
+        }
+
+        [Fact]
+        public void StartTestClassMethod()
+        {
+            var testobject = new TestClass { teststring = "123" };
+            var task = manager.Start(testobject.TestMethod, 234);
+            Console.WriteLine(task.Result);
+            Assert.Equal("123234", task.Result);
+        }
+
+        public static void TestAction()
         {
         }
 
         [Fact]
-        public void StartTestSimple()
+        public void StartTestAction()
         {
-            var task = manager.Start(TestSimple);
+            var task = manager.Start(TestAction);
+            task.Wait();
+            Assert.InRange(DateTime.Now.Subtract(manager[task].Process.ExitTime).Minutes, 0, 5);
+        }
+
+        public static void TestAction1(string param)
+        {
+        }
+
+        [Fact]
+        public void StartTestAction1()
+        {
+            var task = manager.Start(TestAction1, "sdfg");
             task.Wait();
             Assert.InRange(DateTime.Now.Subtract(manager[task].Process.ExitTime).Minutes, 0, 5);
         }
@@ -108,16 +149,43 @@ namespace AZI.ProcessThreads.Tests
 
         public static void TestException()
         {
-            TestException();
+            throw new NotSupportedException();
         }
 
         [Fact]
-        public void StartTestStackOverflowException()
+        public void StartTestExceptionAction()
         {
             var task = manager.Start(TestException);
             var ex = Assert.Throws<AggregateException>(() => task.Wait());
-            Assert.Equal("Process Thread crashed", ex.InnerException.Message);
+            Assert.True(ex.InnerException is NotSupportedException);
         }
+
+        public static void TestStackOverflowExceptionException()
+        {
+            TestStackOverflowExceptionException();
+        }
+
+        [Fact]
+        public void StartTestStackOverflowExceptionAction()
+        {
+            var task = manager.Start(TestStackOverflowExceptionException);
+            var ex = Assert.Throws<AggregateException>(() => task.Wait());
+            Assert.Equal("Process Thread crashed, possible StackOverflowException", ex.InnerException.Message);
+        }
+
+        public static string TestStackOverflowExceptionException(int a)
+        {
+            return TestStackOverflowExceptionException(a);
+        }
+
+        [Fact]
+        public void StartTestStackOverflowExceptionFunc()
+        {
+            var task = manager.Start(TestStackOverflowExceptionException, 123);
+            var ex = Assert.Throws<AggregateException>(() => task.Wait());
+            Assert.Equal("Process Thread crashed, possible StackOverflowException", ex.InnerException.Message);
+        }
+
 
         public static void TestCancel()
         {

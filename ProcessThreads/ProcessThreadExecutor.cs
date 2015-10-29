@@ -20,6 +20,7 @@ namespace AZI.ProcessThreads
         {
             if (args.Length < 5) return -1;
             NativeMethods.SetErrorMode(NativeMethods.ErrorModes.SEM_NOGPFAULTERRORBOX);
+            Console.WriteLine(string.Join(", ", args));
 
             Console.Title = args[2] + "." + args[3];
 
@@ -29,19 +30,17 @@ namespace AZI.ProcessThreads
             try
             {
                 var assembly = Assembly.LoadFile(args[1]);
+                AppDomain.CurrentDomain.Load(assembly.FullName);
                 var type = assembly.GetType(args[2]);
                 try
                 {
                     switch ((InvocationType)int.Parse(args[0]))
                     {
-                        case InvocationType.Simple:
-                            InvokeSimple(type, args[3]);
-                            break;
                         case InvocationType.Pipe:
                             InvokeWithPipe(type, args[3], args[4]);
                             break;
-                        case InvocationType.ParamsAndResult:
-                            InvokeWithParamsAndResult(type, args[3], args[4]);
+                        case InvocationType.Func:
+                            InvokeFunc(type, args[3], args[4]);
                             break;
                     }
                 }
@@ -61,6 +60,7 @@ namespace AZI.ProcessThreads
             {
                 Console.WriteLine(e);
                 Console.Error.WriteLine(e);
+                Console.ReadKey();
                 return -1;
             }
         }
@@ -71,22 +71,33 @@ namespace AZI.ProcessThreads
         /// <param name="type">Type containing method</param>
         /// <param name="methodName">Name of method to call</param>
         /// <param name="pipeName">Name of pipe to pass parameter and result</param>
-        static void InvokeWithParamsAndResult(Type type, string methodName, string pipeName)
+        static void InvokeFunc(Type type, string methodName, string pipeName)
         {
             var pipe = new NamedPipeClientStream(pipeName);
 
             pipe.Connect();
 
             var formatter = new BinaryFormatter();
+            
+            var pars = (ProcessThreadParams)formatter.Deserialize(pipe);
 
-            var pars = (object[])formatter.Deserialize(pipe);
-            var types = (Type[])pars[0];
+            var method = type.GetMethod(methodName, pars.Types);
 
-            var method = type.GetMethod(methodName, types);
-
-            object result = method.Invoke(null, (object[])pars[1]);
-
-            formatter.Serialize(pipe, result);
+            try
+            {
+                object result = method.Invoke(pars.Target, pars.Parameters);
+                formatter.Serialize(pipe, ProcessThreadResult.Successeded(result));
+            }
+            catch (TargetInvocationException e)
+            {
+                formatter.Serialize(pipe, ProcessThreadResult.Exception(e.InnerException));
+                throw e.InnerException;
+            }
+            catch (Exception e)
+            {
+                formatter.Serialize(pipe, ProcessThreadResult.Exception(e));
+                throw;
+            }
 
             pipe.WaitForPipeDrain();
             pipe.Close();
@@ -108,17 +119,6 @@ namespace AZI.ProcessThreads
 
             pipe.WaitForPipeDrain();
             pipe.Close();
-        }
-
-        /// <summary>
-        /// Calls method.
-        /// </summary>
-        /// <param name="type">Type containing method</param>
-        /// <param name="methodName">Name of method to call</param>
-        static void InvokeSimple(Type type, string methodName)
-        {
-            var method = type.GetMethod(methodName);
-            method.Invoke(null, new object[] { });
         }
     }
 }

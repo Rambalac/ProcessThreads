@@ -63,8 +63,11 @@
     <Compile Include="NativeMethods.cs" />
     <Compile Include="ProcessThread.cs" />
     <Compile Include="ProcessThreadExecutor.cs" />
+    <Compile Include="ProcessThreadParams.cs" />
+    <Compile Include="ProcessThreadResult.cs" />
     <Compile Include="ProcessThreadsManager.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Void.cs" />
   </ItemGroup>
   <ItemGroup>
     <BootstrapperPackage Include=".NETFramework,Version=v4.5">

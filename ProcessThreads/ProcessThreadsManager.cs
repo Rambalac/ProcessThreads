@@ -110,14 +110,17 @@ namespace AZI.ProcessThreads
                 {
                     FileName = GetType().Assembly.Location,
                     Arguments = $"{(int)type} {assemblyLocation} {typeName} {methodName} " + string.Join(" ", arguments),
-                    RedirectStandardError = true,
-                    CreateNoWindow = CreateNoWindow,
-                    UseShellExecute = false,
-                    ErrorDialog = false,
+                    //RedirectStandardError = true,
+                    //CreateNoWindow = CreateNoWindow,
+                    //UseShellExecute = false,
+                    //ErrorDialog = false,
                     UserName = UserName,
-                    Password = Password
+                    Password = Password,
+                    
                 },
-                EnableRaisingEvents = true
+                EnableRaisingEvents = true,
+                
+
             };
             proc.ErrorDataReceived += (sender, e) =>
             {
@@ -135,7 +138,7 @@ namespace AZI.ProcessThreads
         /// <returns></returns>
         public Task Start(Action<NamedPipeClientStream> method, out NamedPipeServerStream pipe)
         {
-            if (!method.Method.IsStatic) throw new ArgumentException("Method has to be static", nameof(method));
+            if (!method.Method.IsStatic) throw new ArgumentException("Method must be static", nameof(method));
 
             string pipeName = Guid.NewGuid().ToString();
             pipe = new NamedPipeServerStream(pipeName);
@@ -169,34 +172,59 @@ namespace AZI.ProcessThreads
         /// <param name="method">Static method to start</param>
         public Task Start(Action method)
         {
-            if (!method.Method.IsStatic) throw new ArgumentException("Method has to be static", nameof(method));
-
-            string cancelHndlName = Guid.NewGuid().ToString();
-            var cancelHndl = new EventWaitHandle(false, EventResetMode.ManualReset, cancelHndlName);
-
-            var exited = new TaskCompletionSource<bool>();
-            var proc = BuildInfo(method.Method, InvocationType.Simple, exited, cancelHndlName);
-
-
-            proc.Exited += (sender, args) =>
-            {
-                if (proc.ExitCode == 0)
-                    exited.SetResult(true);
-                else
-                    if (proc.ExitCode == 1) exited.SetCanceled();
-                else
-                    exited.SetException(new Exception("Process Thread crashed"));
-            };
-
-            proc.Start();
-            proc.PriorityClass = PriorityClass;
-
-            Processes.TryAdd(exited.Task, new ProcessThread(proc, exited.Task, cancelHndl));
-            return exited.Task;
+            return StartVariableParamsAndResult<Void>(method.GetMethodInfo(), new ProcessThreadParams(method.Target));
         }
 
         /// <summary>
-        /// Start Process Thread with parameter and result
+        /// Starts Process Thread with parameter
+        /// </summary>
+        /// <param name="method">Static method to start</param>
+        public Task Start<P1>(Action<P1> method, P1 param1)
+        {
+            return StartVariableParamsAndResult<Void>(method.GetMethodInfo(), new ProcessThreadParams(
+                method.Target,
+                new Type[] { typeof(P1) },
+                new object[] { param1 }));
+        }
+
+        /// <summary>
+        /// Start Process Thread with 2 parameters
+        /// </summary>
+        /// <typeparam name="P1">Parameter1 type</typeparam>
+        /// <typeparam name="P2">Parameter2 type</typeparam>
+        /// <param name="method">Static method to start</param>
+        /// <param name="param1">Parameter1 to pass to the method</param>
+        /// <param name="param2">Parameter2 to pass to the method</param>
+        /// <returns>Result of method</returns>
+        public Task Start<P1, P2>(Action<P1, P2> method, P1 param1, P2 param2)
+        {
+            return StartVariableParamsAndResult<Void>(method.GetMethodInfo(), new ProcessThreadParams(
+                method.Target,
+                new Type[] { typeof(P1), typeof(P2) },
+                new object[] { param1, param2 }));
+        }
+
+        /// <summary>
+        /// Start Process Thread with 3 parameters
+        /// </summary>
+        /// <typeparam name="P1">Parameter1 type</typeparam>
+        /// <typeparam name="P2">Parameter2 type</typeparam>
+        /// <typeparam name="P3">Parameter3 type</typeparam>
+        /// <param name="method">Static method to start</param>
+        /// <param name="param1">Parameter1 to pass to the method</param>
+        /// <param name="param2">Parameter2 to pass to the method</param>
+        /// <param name="param3">Parameter3 to pass to the method</param>
+        /// <returns>Result of method</returns>
+        public Task Start<P1, P2, P3>(Action<P1, P2, P3> method, P1 param1, P2 param2, P3 param3)
+        {
+            return StartVariableParamsAndResult<Void>(method.GetMethodInfo(), new ProcessThreadParams(
+                method.Target,
+                new Type[] { typeof(P1), typeof(P2), typeof(P3) },
+                new object[] { param1, param2, param3 }));
+        }
+
+        /// <summary>
+        /// Start Process Thread with result and no parameters
         /// </summary>
         /// <typeparam name="P1">Parameter type</typeparam>
         /// <typeparam name="R">Result type</typeparam>
@@ -205,9 +233,7 @@ namespace AZI.ProcessThreads
         /// <returns>Task for method result</returns>
         public Task<R> Start<R>(Func<R> method)
         {
-            return StartVariableParams<R>(method.GetMethodInfo(), new object[] {
-                new Type[] { },
-                new object[] { } });
+            return StartVariableParamsAndResult<R>(method.GetMethodInfo(), new ProcessThreadParams(method.Target));
         }
 
         /// <summary>
@@ -220,13 +246,14 @@ namespace AZI.ProcessThreads
         /// <returns>Result of method</returns>
         public Task<R> Start<P1, R>(Func<P1, R> method, P1 param1)
         {
-            return StartVariableParams<R>(method.GetMethodInfo(), new object[] {
+            return StartVariableParamsAndResult<R>(method.GetMethodInfo(), new ProcessThreadParams(
+                method.Target,
                 new Type[] { typeof(P1) },
-                new object[] { param1 } });
+                new object[] { param1 }));
         }
 
         /// <summary>
-        /// Start Process Thread with parameter and result
+        /// Start Process Thread with 2 parameters and result
         /// </summary>
         /// <typeparam name="P1">Parameter1 type</typeparam>
         /// <typeparam name="P2">Parameter2 type</typeparam>
@@ -237,13 +264,14 @@ namespace AZI.ProcessThreads
         /// <returns>Result of method</returns>
         public Task<R> Start<P1, P2, R>(Func<P1, P2, R> method, P1 param1, P2 param2)
         {
-            return StartVariableParams<R>(method.GetMethodInfo(), new object[] {
+            return StartVariableParamsAndResult<R>(method.GetMethodInfo(), new ProcessThreadParams(
+                method.Target,
                 new Type[] { typeof(P1), typeof(P2) },
-                new object[] { param1, param2 } });
+                new object[] { param1, param2 }));
         }
 
         /// <summary>
-        /// Start Process Thread with parameter and result
+        /// Start Process Thread with 3 parameters and result
         /// </summary>
         /// <typeparam name="P1">Parameter1 type</typeparam>
         /// <typeparam name="P2">Parameter2 type</typeparam>
@@ -256,31 +284,37 @@ namespace AZI.ProcessThreads
         /// <returns>Result of method</returns>
         public Task<R> Start<P1, P2, P3, R>(Func<P1, P2, P3, R> method, P1 param1, P2 param2, P3 param3)
         {
-            return StartVariableParams<R>(method.GetMethodInfo(), new object[] {
+            return StartVariableParamsAndResult<R>(method.GetMethodInfo(), new ProcessThreadParams(
+                method.Target,
                 new Type[] { typeof(P1), typeof(P2), typeof(P3) },
-                new object[] { param1, param2, param3 } });
+                new object[] { param1, param2, param3 }));
         }
 
-        Task<R> StartVariableParams<R>(MethodInfo method, object[] parameters)
+        Task<R> StartVariableParamsAndResult<R>(MethodInfo method, ProcessThreadParams parameters)
         {
-            if (!method.IsStatic) throw new ArgumentException("Method has to be static", nameof(method));
-            if (!typeof(R).IsSerializable) throw new ArgumentException("Result has to be serializable", typeof(R).FullName);
-            foreach (var p in parameters)
-                if (p != null && !p.GetType().IsSerializable) throw new ArgumentException($"Parameter has to be serializable", p.GetType().FullName);
+            //if (!method.IsStatic) throw new ArgumentException("Method has to be static", nameof(method));
+            if (!(parameters.Target?.GetType().IsSerializable ?? true)) throw new ArgumentException("Method target must be serializable", nameof(method));
+            if (!typeof(R).IsSerializable) throw new ArgumentException("Result must be serializable", typeof(R).FullName);
+            foreach (var p in parameters.Parameters)
+                if (p != null && !p.GetType().IsSerializable) throw new ArgumentException($"Parameter must be serializable", p.GetType().FullName);
 
             string pipeName = Guid.NewGuid().ToString();
             var pipe = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
             var exited = new TaskCompletionSource<R>();
             var cancelHndl = new EventWaitHandle(false, EventResetMode.ManualReset, pipeName);
 
-            var proc = BuildInfo(method, InvocationType.ParamsAndResult, exited, pipeName);
+            var proc = BuildInfo(method, InvocationType.Func, exited, pipeName);
             var formatter = new BinaryFormatter();
+            R taskResult = default(R);
             proc.Exited += (sender, args) =>
             {
-                if (proc.ExitCode == 1)
-                    exited.SetCanceled();
+                var exitcode = proc.ExitCode;
+                if (exitcode == 0)
+                    exited.SetResult(taskResult);
+                if (exitcode == 1)
+                    exited.TrySetCanceled();
                 else
-                    if (proc.ExitCode != 0) exited.SetException(new Exception("Process Thread crashed"));
+                    if (exitcode != 0) exited.TrySetException(new Exception("Process Thread crashed, possible StackOverflowException"));
             };
 
             proc.Start();
@@ -303,8 +337,23 @@ namespace AZI.ProcessThreads
                     {
                         pipe.Close();
                         memory.Position = 0;
-                        var result = (R)formatter.Deserialize(memory);
-                        exited.SetResult(result);
+                        if (memory.Length != 0)
+                        {
+                            var result = (ProcessThreadResult)formatter.Deserialize(memory);
+
+                            if (result.IsSuccesseded)
+                            {
+                                taskResult = (typeof(R) != typeof(Void)) ? (R)result.Result : default(R);
+                            }
+                            else
+                            {
+                                if (result.Result is OperationCanceledException)
+                                    exited.TrySetCanceled();
+                                else
+                                    exited.SetException((Exception)result.Result);
+
+                            }
+                        }
                     }
                     else
                     {

@@ -2,8 +2,7 @@
 {
     enum InvocationType
     {
-        Simple,
         Pipe,
-        ParamsAndResult
+        Func
     }
 }
