@@ -7,7 +7,7 @@
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProjectGuid>{DD4E6DAB-2AB4-462A-986F-A37D997C0560}</ProjectGuid>
-    <OutputType>Exe</OutputType>
+    <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>AZI.ProcessThreads.Tests</RootNamespace>
     <AssemblyName>AZI.ProcessThreads.Tests</AssemblyName>
@@ -70,6 +70,10 @@
     <ProjectReference Include="..\ProcessThreads\ProcessThreads.csproj">
       <Project>{CD99B126-95EE-4D0A-89E6-9D47A87F618D}</Project>
       <Name>ProcessThreads</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\ProjectForTests\ProjectForTests.csproj">
+      <Project>{c11d8a1c-4826-4cae-ba3b-f638ef1b5784}</Project>
+      <Name>ProjectForTests</Name>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>

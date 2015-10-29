@@ -45,7 +45,7 @@ namespace AZI.ProcessThreads
         public bool CreateNoWindow = true;
 
         /// <summary>
-        /// See <see cref="Process">
+        /// See <see cref="Process"/>
         /// </summary>
         public ProcessPriorityClass PriorityClass = ProcessPriorityClass.Normal;
 
@@ -98,36 +98,42 @@ namespace AZI.ProcessThreads
         /// <param name="exited">Response object to create Task</param>
         /// <param name="arguments">Additional command line argument</param>
         /// <returns>New Process object</returns>
-        Process BuildInfo<T>(MethodInfo method, InvocationType type, TaskCompletionSource<T> exited, params string[] arguments)
+        ProcessThread BuildInfo<T>(MethodInfo method, InvocationType type, TaskCompletionSource<T> exited, params string[] arguments)
         {
             var assemblyLocation = method.Module.Assembly.Location;
             var typeName = method.ReflectedType.FullName;
             var methodName = method.Name;
+
+            string pipeName = Guid.NewGuid().ToString();
 
             var proc = new Process
             {
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = GetType().Assembly.Location,
-                    Arguments = $"{(int)type} {assemblyLocation} {typeName} {methodName} " + string.Join(" ", arguments),
-                    //RedirectStandardError = true,
-                    //CreateNoWindow = CreateNoWindow,
-                    //UseShellExecute = false,
-                    //ErrorDialog = false,
-                    UserName = UserName,
-                    Password = Password,
-                    
-                },
-                EnableRaisingEvents = true,
-                
+                    Arguments = $"{(int)type} {assemblyLocation} {typeName} {methodName} {pipeName}" + string.Join(" ", arguments),
 
+                    RedirectStandardError = true,
+                    CreateNoWindow = CreateNoWindow,
+                    UseShellExecute = false,
+                    ErrorDialog = false,
+
+                    UserName = UserName,
+                    Password = Password
+                },
+                EnableRaisingEvents = true
             };
-            proc.ErrorDataReceived += (sender, e) =>
+            var cancelHndl = new EventWaitHandle(false, EventResetMode.ManualReset, pipeName);
+            var pipe = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+
+            var result = new ProcessThread(proc, exited.Task, cancelHndl, pipe);
+
+            proc.ErrorDataReceived += (sender, args) =>
             {
-                exited.SetException(new Exception(e.Data));
-                proc.Dispose();
+                result.AddErrorLine(args.Data);
             };
-            return proc;
+
+            return result;
         }
 
         /// <summary>
@@ -140,29 +146,26 @@ namespace AZI.ProcessThreads
         {
             if (!method.Method.IsStatic) throw new ArgumentException("Method must be static", nameof(method));
 
-            string pipeName = Guid.NewGuid().ToString();
-            pipe = new NamedPipeServerStream(pipeName);
             var exited = new TaskCompletionSource<bool>();
-            var cancelHndl = new EventWaitHandle(false, EventResetMode.ManualReset, pipeName);
 
-            var proc = BuildInfo(method.Method, InvocationType.Pipe, exited, pipeName);
+            var proc = BuildInfo(method.Method, InvocationType.Pipe, exited);
+            pipe = proc.Pipe;
 
-            proc.Exited += (sender, args) =>
+            proc.Process.Exited += (sender, args) =>
             {
-                if (proc.ExitCode == 0)
+                if (proc.Process.ExitCode == 0)
                     exited.SetResult(true);
                 else
-                    if (proc.ExitCode == 1) exited.SetCanceled();
+                    if (proc.Process.ExitCode == 1) exited.SetCanceled();
                 else
-                    exited.SetException(new Exception("Process Thread crashed"));
+                    exited.SetException(proc.GetError());
             };
 
-            proc.Start();
-            proc.PriorityClass = PriorityClass;
+            proc.Start(PriorityClass);
 
-            Processes.TryAdd(exited.Task, new ProcessThread(proc, exited.Task, cancelHndl, pipe));
+            Processes.TryAdd(exited.Task, proc);
 
-            pipe.WaitForConnection();
+            proc.Pipe.WaitForConnection();
             return exited.Task;
         }
 
@@ -179,6 +182,7 @@ namespace AZI.ProcessThreads
         /// Starts Process Thread with parameter
         /// </summary>
         /// <param name="method">Static method to start</param>
+        /// <param name="param1">Parameter1 to pass to the method</param>
         public Task Start<P1>(Action<P1> method, P1 param1)
         {
             return StartVariableParamsAndResult<Void>(method.GetMethodInfo(), new ProcessThreadParams(
@@ -226,10 +230,8 @@ namespace AZI.ProcessThreads
         /// <summary>
         /// Start Process Thread with result and no parameters
         /// </summary>
-        /// <typeparam name="P1">Parameter type</typeparam>
         /// <typeparam name="R">Result type</typeparam>
         /// <param name="method">Static method to start</param>
-        /// <param name="param1">Parameter to pass to the method</param>
         /// <returns>Task for method result</returns>
         public Task<R> Start<R>(Func<R> method)
         {
@@ -290,6 +292,47 @@ namespace AZI.ProcessThreads
                 new object[] { param1, param2, param3 }));
         }
 
+        void SerializeDeserializeAsync(NamedPipeServerStream pipe, ProcessThreadParams parameters, Action<ProcessThreadResult> callback)
+        {
+            var formatter = new BinaryFormatter();
+            pipe.BeginWaitForConnection((ar) =>
+            {
+                pipe.EndWaitForConnection(ar);
+                var memory = new MemoryStream();
+                formatter.Serialize(memory, parameters);
+
+                var lengthBytes = BitConverter.GetBytes((int)memory.Length);
+                pipe.Write(lengthBytes, 0, 4);
+                memory.WriteTo(pipe);
+
+                var buf = new byte[1024];
+                memory = new MemoryStream();
+                AsyncCallback endread = null;
+                endread = reader =>
+                {
+                    int bytesRead = pipe.EndRead(reader);
+                    if (bytesRead == 0)
+                    {
+                        pipe.Close();
+                        memory.Position = 0;
+                        if (memory.Length != 0)
+                        {
+                            var result = (ProcessThreadResult)formatter.Deserialize(memory);
+                            callback(result);
+                        }
+                    }
+                    else
+                    {
+                        memory.Write(buf, 0, bytesRead);
+                        pipe.BeginRead(buf, 0, buf.Length, endread, null);
+                    }
+
+                };
+
+                pipe.BeginRead(buf, 0, buf.Length, endread, null);
+            }, null);
+        }
+
         Task<R> StartVariableParamsAndResult<R>(MethodInfo method, ProcessThreadParams parameters)
         {
             //if (!method.IsStatic) throw new ArgumentException("Method has to be static", nameof(method));
@@ -298,73 +341,48 @@ namespace AZI.ProcessThreads
             foreach (var p in parameters.Parameters)
                 if (p != null && !p.GetType().IsSerializable) throw new ArgumentException($"Parameter must be serializable", p.GetType().FullName);
 
-            string pipeName = Guid.NewGuid().ToString();
-            var pipe = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
             var exited = new TaskCompletionSource<R>();
-            var cancelHndl = new EventWaitHandle(false, EventResetMode.ManualReset, pipeName);
 
-            var proc = BuildInfo(method, InvocationType.Func, exited, pipeName);
+            var proc = BuildInfo(method, InvocationType.Func, exited);
             var formatter = new BinaryFormatter();
+            bool resultSet = false;
             R taskResult = default(R);
-            proc.Exited += (sender, args) =>
+            proc.Process.Exited += (sender, args) =>
             {
-                var exitcode = proc.ExitCode;
+                var exitcode = proc.Process.ExitCode;
                 if (exitcode == 0)
-                    exited.SetResult(taskResult);
+                {
+                    if (resultSet)
+                        exited.SetResult(taskResult);
+                    else
+                        exited.TrySetException(new Exception("ProcessThread failed to pass any result back"));
+                }
                 if (exitcode == 1)
                     exited.TrySetCanceled();
                 else
-                    if (exitcode != 0) exited.TrySetException(new Exception("Process Thread crashed, possible StackOverflowException"));
+                    exited.TrySetException(proc.GetError());
             };
 
-            proc.Start();
-            proc.PriorityClass = PriorityClass;
+            proc.Start(PriorityClass);
 
-            Processes.TryAdd(exited.Task, new ProcessThread(proc, exited.Task, cancelHndl, pipe));
+            Processes.TryAdd(exited.Task, proc);
 
-            pipe.BeginWaitForConnection((ar) =>
+            SerializeDeserializeAsync(proc.Pipe, parameters, (result) =>
             {
-                pipe.EndWaitForConnection(ar);
-                formatter.Serialize(pipe, parameters);
-
-                var buf = new byte[1024];
-                var memory = new MemoryStream();
-                AsyncCallback callback = null;
-                callback = readar =>
+                if (result.IsSuccesseded)
                 {
-                    int bytesRead = pipe.EndRead(readar);
-                    if (bytesRead == 0)
-                    {
-                        pipe.Close();
-                        memory.Position = 0;
-                        if (memory.Length != 0)
-                        {
-                            var result = (ProcessThreadResult)formatter.Deserialize(memory);
-
-                            if (result.IsSuccesseded)
-                            {
-                                taskResult = (typeof(R) != typeof(Void)) ? (R)result.Result : default(R);
-                            }
-                            else
-                            {
-                                if (result.Result is OperationCanceledException)
-                                    exited.TrySetCanceled();
-                                else
-                                    exited.SetException((Exception)result.Result);
-
-                            }
-                        }
-                    }
+                    taskResult = (typeof(R) != typeof(Void)) ? (R)result.Result : default(R);
+                    resultSet = true;
+                }
+                else
+                {
+                    if (result.Result is OperationCanceledException)
+                        exited.TrySetCanceled();
                     else
-                    {
-                        memory.Write(buf, 0, bytesRead);
-                        pipe.BeginRead(buf, 0, buf.Length, callback, null);
-                    }
+                        exited.SetException((Exception)result.Result);
 
-                };
-
-                pipe.BeginRead(buf, 0, buf.Length, callback, null);
-            }, null);
+                }
+            });
 
             return exited.Task;
         }
@@ -385,11 +403,17 @@ namespace AZI.ProcessThreads
                 Processes.TryRemove(key, out value);
         }
 
+        /// <summary>
+        /// Disposes Password if set.
+        /// </summary>
         public void Dispose()
         {
             Dispose(true);
         }
 
+        /// <summary>
+        /// Disposes Password if set.
+        /// </summary>
         protected virtual void Dispose(bool v)
         {
             Password.Dispose();

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Threading;
@@ -31,6 +32,8 @@ namespace AZI.ProcessThreads
         /// </summary>
         public readonly EventWaitHandle CancellationHandle;
 
+        internal List<string> ErrorLines = new List<string>();
+
         /// <summary>
         /// Initializes a new instance of the <see cref="ProcessThread" /> class.
         /// </summary>
@@ -38,7 +41,7 @@ namespace AZI.ProcessThreads
         /// <param name="pipe">Optional server-sided named pipe</param>
         /// <param name="task">Task for Process Thread</param>
         /// <param name="cancellationHandle">Handle to send cancel signal to Process Thread</param>
-        internal ProcessThread(Process process, Task task, EventWaitHandle cancellationHandle, NamedPipeServerStream pipe = null)
+        internal ProcessThread(Process process, Task task, EventWaitHandle cancellationHandle, NamedPipeServerStream pipe)
         {
             if (process == null) throw new ArgumentNullException(nameof(process));
 
@@ -54,6 +57,25 @@ namespace AZI.ProcessThreads
         public void Cancel()
         {
             CancellationHandle.Set();
+        }
+
+        internal void Start(ProcessPriorityClass priorityClass)
+        {
+            Process.Start();
+            Process.PriorityClass = priorityClass;
+            Process.BeginErrorReadLine();
+        }
+
+        internal void AddErrorLine(string data)
+        {
+            ErrorLines.Add(data);
+        }
+
+        internal Exception GetError()
+        {
+            var result = string.Join("\r\n", ErrorLines);
+            if (result == "\r\nProcess is terminated due to StackOverflowException.\r\n") return new StackOverflowException();
+            return new Exception(result);
         }
     }
 }

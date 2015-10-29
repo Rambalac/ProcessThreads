@@ -1,6 +1,8 @@
 ﻿using System;
+using System.IO;
 using System.IO.Pipes;
 using System.Reflection;
+using System.Runtime.Serialization;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Threading;
 
@@ -20,7 +22,7 @@ namespace AZI.ProcessThreads
         {
             if (args.Length < 5) return -1;
             NativeMethods.SetErrorMode(NativeMethods.ErrorModes.SEM_NOGPFAULTERRORBOX);
-            Console.WriteLine(string.Join(", ", args));
+            //Console.WriteLine(string.Join(", ", args));
 
             Console.Title = args[2] + "." + args[3];
 
@@ -30,7 +32,6 @@ namespace AZI.ProcessThreads
             try
             {
                 var assembly = Assembly.LoadFile(args[1]);
-                AppDomain.CurrentDomain.Load(assembly.FullName);
                 var type = assembly.GetType(args[2]);
                 try
                 {
@@ -58,9 +59,7 @@ namespace AZI.ProcessThreads
             }
             catch (Exception e)
             {
-                Console.WriteLine(e);
                 Console.Error.WriteLine(e);
-                Console.ReadKey();
                 return -1;
             }
         }
@@ -73,34 +72,66 @@ namespace AZI.ProcessThreads
         /// <param name="pipeName">Name of pipe to pass parameter and result</param>
         static void InvokeFunc(Type type, string methodName, string pipeName)
         {
-            var pipe = new NamedPipeClientStream(pipeName);
-
-            pipe.Connect();
-
-            var formatter = new BinaryFormatter();
-            
-            var pars = (ProcessThreadParams)formatter.Deserialize(pipe);
-
-            var method = type.GetMethod(methodName, pars.Types);
-
-            try
+            using (var pipe = new NamedPipeClientStream(pipeName))
             {
-                object result = method.Invoke(pars.Target, pars.Parameters);
-                formatter.Serialize(pipe, ProcessThreadResult.Successeded(result));
-            }
-            catch (TargetInvocationException e)
-            {
-                formatter.Serialize(pipe, ProcessThreadResult.Exception(e.InnerException));
-                throw e.InnerException;
-            }
-            catch (Exception e)
-            {
-                formatter.Serialize(pipe, ProcessThreadResult.Exception(e));
-                throw;
-            }
 
-            pipe.WaitForPipeDrain();
-            pipe.Close();
+                pipe.Connect();
+
+                var formatter = new BinaryFormatter();
+                ProcessThreadParams pars;
+                try
+                {
+                    var lengthBytes = new byte[4];
+                    pipe.Read(lengthBytes, 0, 4);
+                    var length = BitConverter.ToInt32(lengthBytes, 0);
+
+                    var memory = new MemoryStream(length);
+                    var buf = new byte[1024];
+                    while (length != 0)
+                    {
+                        var red = pipe.Read(buf, 0, buf.Length);
+                        memory.Write(buf, 0, red);
+                        length -= red;
+                    }
+                    memory.Position = 0;
+
+                    AppDomain.CurrentDomain.AssemblyResolve += (sender, args) =>
+                      {
+                          return type.Assembly;
+                      };
+
+                    pars = (ProcessThreadParams)formatter.Deserialize(memory);
+
+
+                }
+                catch (SerializationException e)
+                {
+
+                    formatter.Serialize(pipe, ProcessThreadResult.Exception(e));
+                    throw;
+                }
+
+                var method = type.GetMethod(methodName, pars.Types);
+
+                try
+                {
+                    object result = method.Invoke(pars.Target, pars.Parameters);
+
+                    var memory = new MemoryStream();
+                    formatter.Serialize(memory, ProcessThreadResult.Successeded(result));
+                    memory.WriteTo(pipe);
+                }
+                catch (TargetInvocationException e)
+                {
+                    formatter.Serialize(pipe, ProcessThreadResult.Exception(e.InnerException));
+                    throw e.InnerException;
+                }
+                catch (Exception e)
+                {
+                    formatter.Serialize(pipe, ProcessThreadResult.Exception(e));
+                    throw;
+                }
+            }
         }
 
         /// <summary>

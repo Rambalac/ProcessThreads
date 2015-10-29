@@ -11,28 +11,19 @@ namespace AZI.ProcessThreads.Tests
     public class ProcessManagerTestsBase
     {
         protected ProcessThreadsManager manager = new ProcessThreadsManager();
-
-
-    }
-
-    [Serializable]
-    public class TestClass
-    {
-        public string teststring = "sdfgsd";
-
-        public string TestMethod(int param)
-        {
-            return teststring + param;
-        }
     }
 
     public class ProcessManagerTests : ProcessManagerTestsBase
     {
-        static void Main(string[] args)
+        [Serializable]
+        public class TestClass
         {
-            var test = new ProcessManagerTests();
-            test.manager.CreateNoWindow = false;
-            test.StartTestClassMethod();
+            public string teststring = "sdfgsd";
+
+            public string TestMethod(int param)
+            {
+                return teststring + param;
+            }
         }
 
         [Fact]
@@ -40,7 +31,14 @@ namespace AZI.ProcessThreads.Tests
         {
             var testobject = new TestClass { teststring = "123" };
             var task = manager.Start(testobject.TestMethod, 234);
-            Console.WriteLine(task.Result);
+            Assert.Equal("123234", task.Result);
+        }
+
+        [Fact]
+        public void StartTestLibraryClassMethod()
+        {
+            var testobject = new ProjectForTests.Class1 { teststring = "123" };
+            var task = manager.Start(testobject.TestMethod, 234);
             Assert.Equal("123234", task.Result);
         }
 
@@ -170,7 +168,7 @@ namespace AZI.ProcessThreads.Tests
         {
             var task = manager.Start(TestStackOverflowExceptionException);
             var ex = Assert.Throws<AggregateException>(() => task.Wait());
-            Assert.Equal("Process Thread crashed, possible StackOverflowException", ex.InnerException.Message);
+            Assert.True(ex.InnerException is StackOverflowException);
         }
 
         public static string TestStackOverflowExceptionException(int a)
@@ -183,7 +181,7 @@ namespace AZI.ProcessThreads.Tests
         {
             var task = manager.Start(TestStackOverflowExceptionException, 123);
             var ex = Assert.Throws<AggregateException>(() => task.Wait());
-            Assert.Equal("Process Thread crashed, possible StackOverflowException", ex.InnerException.Message);
+            Assert.True( ex.InnerException is StackOverflowException);
         }
 
 

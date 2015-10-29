@@ -15,7 +15,7 @@ namespace AZI.ProcessThreads
 
         static public ProcessThreadResult Successeded(object r)
         {
-            return new ProcessThreadResult { IsSuccesseded = true, Result = r };
+            return new ProcessThreadResult { IsSuccesseded = true,        Result = r };
         }
         static public ProcessThreadResult Exception(Exception e)
         {
