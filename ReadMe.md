@@ -1,6 +1,5 @@
 Process threads
 ===============
-
 Runs methods in separate process.
 
 All parameters and method targets must be Serializable.
@@ -9,6 +8,13 @@ Because method run in separate process you can not access the same data in stati
 Any change in static data in one process has no effect for other. 
 Because of the same reason any changes made in parameter objects will not be passed to other processes. 
 If you pass one of parameters as result returned object will new object with new reference.
+
+Installing
+----------
+You can use Nuget package.
+```
+Install-Package ProcessThreads
+```
 
 Simple Example
 --------------
