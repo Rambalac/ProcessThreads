@@ -31,7 +31,7 @@ public void StartProcess()
 One of purposes of library is catching ```StackOverflowException```. It also passes back to Task any other exceptions if possible.
 
 ```C#
-public static void TestStackOverflowExceptionException()
+public static void TestStackOverflowException()
 {
     TestStackOverflowExceptionException();
 }
@@ -39,7 +39,7 @@ public static void TestStackOverflowExceptionException()
 public void StartTestStackOverflowException()
 {
 	var manager = new ProcessThreadsManager();
-    var task = manager.Start(TestStackOverflowExceptionException);
+    var task = manager.Start(TestStackOverflowException);
 	try{
 	task.Wait();
 	} catch(AggregateException e)
