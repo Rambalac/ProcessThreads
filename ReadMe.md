@@ -6,8 +6,8 @@ All parameters and method targets must be Serializable.
 Expression in ```Start``` method must be method call expressions. You still can use something like 
 ```
 manager.Start(()=>("asd"+"fgh").MyExtensionMethod(var1+var2))
-```, 
-but you cannot use 
+``` 
+But you cannot use 
 ```
 manager.Start(()=>MyMethod1(var)+MyMethod2()))
 ```
