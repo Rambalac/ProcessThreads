@@ -60,7 +60,7 @@ namespace AZI.ProcessThreads
         public string UserName;
 
         /// <summary>
-        /// Throws OperationCanceledException to inform Task about canceled operation (IsCanceled true) if cancellation signal was set by Process Threads manager.
+        /// If cancellation signal was set by manager throws OperationCanceledException to inform Task about canceled operation (IsCanceled true).
         /// </summary>
         public static void ThrowIfCancellationRequested()
         {
@@ -74,7 +74,7 @@ namespace AZI.ProcessThreads
         {
             get
             {
-                if (!isProcessThread) throw new InvalidOperationException("Not Process Thread");
+                if (!isProcessThread) throw new InvalidOperationException("Not a Process Thread");
                 return cancellationEvent.WaitOne(0);
             }
         }

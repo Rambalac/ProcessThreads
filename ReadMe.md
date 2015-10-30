@@ -4,19 +4,19 @@ Runs methods in separate process.
 
 All parameters and method targets must be Serializable.
 
-Because method run in separate process you can not access the same data in static fields. 
+Because method runs in separate process you can not access the same data in static fields. 
 Any change in static data in one process has no effect for other. 
 Because of the same reason any changes made in parameter objects will not be passed to other processes. 
-If you pass one of parameters as result returned object will new object with new reference.
+If you pass one of parameters as result, returned object will be a new object with new reference not related with original parameter.
 
 Installing
 ----------
-You can use Nuget package.
+To install from Nuget use.
 ```
 Install-Package ProcessThreads
 ```
 
-Simple Example
+Simple example
 --------------
 
 ```C#
@@ -34,7 +34,7 @@ public void StartProcess()
 
 ```
 
-One of purposes of library is catching ```StackOverflowException```. It also passes back to Task any other exceptions if possible.
+One of library purposes is catching ```StackOverflowException```. It also passes back to ```Task``` any other exceptions if possible.
 
 ```C#
 public static void TestStackOverflowException()
@@ -76,10 +76,14 @@ public void StartTestCancel()
     manager[task].Cancel();
 }
 ```
+In this case ```Task``` will not have ```IsCanceled``` state, but usual ```IsCompleted```
+
+You also can throw ```OperationCanceledException``` within ProcessThread method, in such case Task will have IsCanceled state.
+Use ```ProcessManager.ThrowIfCancellationRequested``` to check cancellation and throw ```OperationCanceledException```
 
 PipeStream
 ----------
-For realtime data exchange you can use Start with pipe as out parameter. Your code is fully responsible for pipes, including proper closing.
+For realtime data exchange you can use ```Start``` with ```NamedPipeClientStream``` as out parameter. Your code is fully responsible for pipes, including proper closing.
 
 ```C#
 public static void TestPipe(NamedPipeClientStream pipe)

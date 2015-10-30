@@ -52,7 +52,8 @@ namespace AZI.ProcessThreads
         }
 
         /// <summary>
-        /// Sends cancellation to this Process Thread
+        /// Sends cancellation signal to this Process Thread. 
+        /// Even if cancellation signal was sent, but ProcessThread did not throw OperationCanceledException there will be no IsCancelled state in the Task object.
         /// </summary>
         public void Cancel()
         {
