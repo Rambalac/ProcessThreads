@@ -73,7 +73,7 @@ namespace AZI.ProcessThreads.Tests
             Assert.InRange(DateTime.Now.Subtract(manager[task].Process.ExitTime).Minutes, 0, 5);
         }
 
-        public static void TestPipe(string myparam, NamedPipeClientStream pipe)
+        public static string TestPipe(string myparam, NamedPipeClientStream pipe)
         {
             var reader = new StreamReader(pipe);
             using (var writer = new StreamWriter(pipe))
@@ -82,13 +82,14 @@ namespace AZI.ProcessThreads.Tests
                 writer.Write(myparam + "BlaBla!!!" + buf);
                 writer.Flush();
             }
+            return "Done";
         }
 
         [Fact]
         public void StartTestPipe()
         {
             NamedPipeServerStream pipe;
-            manager.Start((p) => TestPipe("HJG", p), out pipe);
+            var task=manager.Start((p) => TestPipe("HJG", p), out pipe);
             pipe.WaitForConnection();
             var writer = new StreamWriter(pipe);
             using (var reader = new StreamReader(pipe))
@@ -97,6 +98,7 @@ namespace AZI.ProcessThreads.Tests
                 writer.Flush();
                 Assert.Equal("HJGBlaBla!!!qwerty", reader.ReadToEnd());
             }
+            Assert.Equal("Done", task.Result);
         }
 
         public static string TestParam(string param)

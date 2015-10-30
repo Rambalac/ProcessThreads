@@ -154,6 +154,23 @@ namespace AZI.ProcessThreads
         }
 
         /// <summary>
+        /// Starts Process Thread with bi-directional pipe for communication.
+        /// </summary>
+        /// <param name="lambda">Lambda to start in separate process. Lambda parameter is pipe you get in that process. 
+        /// Don't forget to close it to be sure all data get transfered to caller process.</param>
+        /// <param name="pipe">Bi-directional pipe for interprocess communication. Don't forget to WaitForConnection and in the end Close pipe. </param>
+        /// <returns>Task to wait for lambda execution and for its result</returns>
+        public Task<R> Start<R>(Expression<Func<NamedPipeClientStream, R>> lambda, out NamedPipeServerStream pipe)
+        {
+            if (!(lambda.Body is MethodCallExpression)) throw new ArgumentException("Lambda must be method call", nameof(lambda));
+            var call = (MethodCallExpression)lambda.Body;
+            var parameters = call.Arguments.Select(a => (a is ParameterExpression) ? new PipeParameter() : Expression.Lambda(a).Compile().DynamicInvoke()).ToArray();
+            var types = call.Method.GetParameters().Select(p => p.ParameterType).ToArray();
+
+            return StartVariableParamsAndResult<R>(call.Method, new ProcessThreadParams(null, types, parameters, true), out pipe);
+        }
+
+        /// <summary>
         /// Starts Process Thread without parameters.
         /// </summary>
         /// <param name="lambda">Lambda to start in separate process. 
