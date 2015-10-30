@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO.Pipes;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -12,28 +13,14 @@ namespace AZI.ProcessThreads
         public object Target;
         public Type[] Types;
         public object[] Parameters;
+        public string Pipe;
 
-        public ProcessThreadParams()
-        {
-            Types = new Type[0];
-            Parameters = new object[0];
-        }
-        public ProcessThreadParams(Type[] t, object[] p)
-        {
-            Types = t;
-            Parameters = p;
-        }
-        public ProcessThreadParams(object target)
-        {
-            Target = target;
-            Types = new Type[0];
-            Parameters = new object[0];
-        }
-        public ProcessThreadParams(object target, Type[] types, object[] pars)
+        public ProcessThreadParams(object target, Type[] types, object[] pars, bool piped = false)
         {
             Target = target;
             Types = types;
             Parameters = pars;
+            Pipe = Guid.NewGuid().ToString();
         }
     }
 

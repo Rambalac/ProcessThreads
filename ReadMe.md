@@ -3,6 +3,8 @@ Process threads
 Runs methods in separate process.
 
 All parameters and method targets must be Serializable.
+Expression in ```Start``` method must be method call expressions. You still can use something like ```manager.Start(()=>("asd"+"fgh").MyExtensionMethod(var1+var2))```, 
+but you cannot use ```manager.Start(()=>MyMethod1(var)+MyMethod2()))```. All method targets and parameters are computed on caller process before executing method on separate process.
 
 Because method runs in separate process you can not access the same data in static fields. 
 Any change in static data in one process has no effect for other. 
@@ -28,7 +30,7 @@ public static string TestMethod(int param) // Executed in new process
 public void StartProcess()
 {
     var manager = new ProcessThreadsManager();
-    var task = manager.Start(TestMethod, 15); // Returns immediately
+    var task = manager.Start(()=>TestMethod(15)); // Returns immediately
     Console.WriteLine(task.Result); // Waits for result and types *150*
 }
 
@@ -45,7 +47,7 @@ public static void TestStackOverflowException()
 public void StartTestStackOverflowException()
 {
 	var manager = new ProcessThreadsManager();
-    var task = manager.Start(TestStackOverflowException);
+    var task = manager.Start(()=>TestStackOverflowException());
 	try{
 	task.Wait();
 	} catch(AggregateException e)
@@ -64,15 +66,15 @@ public static void TestCancel()
 {
     while (!ProcessManager.IsCancelled)
     {
-        Thread.Sleep(50);
+        ... //Do something
     }
 }
 
 public void StartTestCancel()
 {
 	var manager = new ProcessThreadsManager();
-    var task = manager.Start(TestCancel);
-    Thread.Sleep(200);
+    var task = manager.Start(()=>TestCancel());
+    ... //Do something
     manager[task].Cancel();
 }
 ```
@@ -83,18 +85,24 @@ Use ```ProcessManager.ThrowIfCancellationRequested``` to check cancellation and 
 
 PipeStream
 ----------
-For realtime data exchange you can use ```Start``` with ```NamedPipeClientStream``` as out parameter. Your code is fully responsible for pipes, including proper closing.
+For realtime data exchange you can use ```Start``` with ```NamedPipeClientStream``` out parameter. 
+Your code is fully responsible for pipes, including proper closing on both sides.
+Don't forget to call ```WaitForConnection``` on caller side to be sure pipe is connected.
 
 ```C#
-public static void TestPipe(NamedPipeClientStream pipe)
+public static void TestPipe(string param, NamedPipeClientStream pipe)
 {
-
+	... //Do something
+	pipe.Close();
 }
 
 public void StartTestPipe()
 {
 	var manager = new ProcessThreadsManager();
 	NamedPipeServerStream pipe;
-	manager.Start(TestPipe, out pipe);
+	manager.Start((p) => TestPipe("blabla", p), out pipe);
+    pipe.WaitForConnection();
+	... //Do something
+	pipe.Disconnect();
 }
 ```

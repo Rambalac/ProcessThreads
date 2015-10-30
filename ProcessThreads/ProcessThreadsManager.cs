@@ -11,6 +11,7 @@ using System.Security;
 using System.Linq;
 using System.Collections.Generic;
 using System.Security.Permissions;
+using System.Linq.Expressions;
 
 //-----------------------------------------------------------------------
 // <copyright file="ProcessThreadsManager.cs" company="AZI">
@@ -80,29 +81,28 @@ namespace AZI.ProcessThreads
         }
 
         /// <summary>
-        /// Returns Process Thread control object by Task
+        /// Returns Process Thread control object by Task.
         /// </summary>
-        /// <param name="task">Task associated to Process Thread</param>
-        /// <returns>Process Thread control object</returns>
+        /// <param name="task">Task associated to Process Thread.</param>
+        /// <returns>Process Thread control object.</returns>
         public ProcessThread this[Task task]
         {
             get { return Processes[task]; }
         }
 
         /// <summary>
-        /// Creates Process object, but does not start
+        /// Creates Process object, but does not start.
         /// </summary>
-        /// <typeparam name="T">Type for TaskCompletionSource type parameter</typeparam>
-        /// <param name="method">Method to run in new process</param>
-        /// <param name="type">Type of method parameters</param>
-        /// <param name="exited">Response object to create Task</param>
-        /// <param name="arguments">Additional command line argument</param>
-        /// <returns>New Process object</returns>
-        ProcessThread BuildInfo<T>(MethodInfo method, InvocationType type, TaskCompletionSource<T> exited, params string[] arguments)
+        /// <typeparam name="T">Type for TaskCompletionSource type parameter.</typeparam>
+        /// <param name="method">Method to run in new process.</param>
+        /// <param name="exited">Response object to create Task.</param>
+        /// <param name="arguments">Additional command line argument.</param>
+        /// <returns>New Process Thread object.</returns>
+        ProcessThread BuildInfo<T>(MethodInfo method, TaskCompletionSource<T> exited, params string[] arguments)
         {
-            var assemblyLocation = method.Module.Assembly.Location;
-            var typeName = method.ReflectedType.FullName;
-            var methodName = method.Name;
+            var assemblyLocation = method?.Module.Assembly.Location;
+            var typeName = method?.ReflectedType.FullName;
+            var methodName = method?.Name;
 
             string pipeName = Guid.NewGuid().ToString();
 
@@ -111,7 +111,7 @@ namespace AZI.ProcessThreads
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = GetType().Assembly.Location,
-                    Arguments = $"{(int)type} {assemblyLocation} {typeName} {methodName} {pipeName}" + string.Join(" ", arguments),
+                    Arguments = $"{assemblyLocation ?? "null"} {typeName ?? "null"} {methodName ?? "null"} {pipeName}" + string.Join(" ", arguments),
 
                     RedirectStandardError = true,
                     CreateNoWindow = CreateNoWindow,
@@ -137,159 +137,58 @@ namespace AZI.ProcessThreads
         }
 
         /// <summary>
-        /// Starts Process Thread with bi-directional pipe for communication
+        /// Starts Process Thread with bi-directional pipe for communication.
         /// </summary>
-        /// <param name="method">Static method to start</param>
-        /// <param name="pipe">Bi-directional pipe for interprocess communication</param>
-        /// <returns></returns>
-        public Task Start(Action<NamedPipeClientStream> method, out NamedPipeServerStream pipe)
+        /// <param name="lambda">Lambda to start in separate process. Lambda parameter is pipe you get in that process. 
+        /// Don't forget to close it to be sure all data get transfered to caller process.</param>
+        /// <param name="pipe">Bi-directional pipe for interprocess communication. Don't forget to WaitForConnection and in the end Close pipe. </param>
+        /// <returns>Task to wait for lambda execution</returns>
+        public Task Start(Expression<Action<NamedPipeClientStream>> lambda, out NamedPipeServerStream pipe)
         {
-            if (!method.Method.IsStatic) throw new ArgumentException("Method must be static", nameof(method));
+            if (!(lambda.Body is MethodCallExpression)) throw new ArgumentException("Lambda must be method call", nameof(lambda));
+            var call = (MethodCallExpression)lambda.Body;
+            var parameters = call.Arguments.Select(a => (a is ParameterExpression) ? new PipeParameter() : Expression.Lambda(a).Compile().DynamicInvoke()).ToArray();
+            var types = call.Method.GetParameters().Select(p => p.ParameterType).ToArray();
 
-            var exited = new TaskCompletionSource<bool>();
-
-            var proc = BuildInfo(method.Method, InvocationType.Pipe, exited);
-            pipe = proc.Pipe;
-
-            proc.Process.Exited += (sender, args) =>
-            {
-                if (proc.Process.ExitCode == 0)
-                    exited.SetResult(true);
-                else
-                    if (proc.Process.ExitCode == 1) exited.SetCanceled();
-                else
-                    exited.SetException(proc.GetError());
-            };
-
-            proc.Start(PriorityClass);
-
-            Processes.TryAdd(exited.Task, proc);
-
-            proc.Pipe.WaitForConnection();
-            return exited.Task;
+            return StartVariableParamsAndResult<Void>(call.Method, new ProcessThreadParams(null, types, parameters, true), out pipe);
         }
 
         /// <summary>
-        /// Starts Process Thread without parameters
+        /// Starts Process Thread without parameters.
         /// </summary>
-        /// <param name="method">Static method to start</param>
-        public Task Start(Action method)
+        /// <param name="lambda">Lambda to start in separate process. 
+        /// Must be method call expression. 
+        /// If method object is expression it will be calculated in the caller process. 
+        /// If method parameters are expression they will be calculated in the caller process</param>
+        /// <returns>Task to wait for lambda execution</returns>
+        public Task Start(Expression<Action> lambda)
         {
-            return StartVariableParamsAndResult<Void>(method.GetMethodInfo(), new ProcessThreadParams(method.Target));
+            if (!(lambda.Body is MethodCallExpression)) throw new ArgumentException("Lambda must be method call", nameof(lambda));
+            var call = (MethodCallExpression)lambda.Body;
+            var parameters = call.Arguments.Select(a => Expression.Lambda(a).Compile().DynamicInvoke()).ToArray();
+            var types = call.Method.GetParameters().Select(p => p.ParameterType).ToArray();
+            NamedPipeServerStream pipe;
+            return StartVariableParamsAndResult<Void>(call.Method, new ProcessThreadParams(null, types, parameters), out pipe);
         }
 
         /// <summary>
-        /// Starts Process Thread with parameter
-        /// </summary>
-        /// <param name="method">Static method to start</param>
-        /// <param name="param1">Parameter1 to pass to the method</param>
-        public Task Start<P1>(Action<P1> method, P1 param1)
-        {
-            return StartVariableParamsAndResult<Void>(method.GetMethodInfo(), new ProcessThreadParams(
-                method.Target,
-                new Type[] { typeof(P1) },
-                new object[] { param1 }));
-        }
-
-        /// <summary>
-        /// Start Process Thread with 2 parameters
-        /// </summary>
-        /// <typeparam name="P1">Parameter1 type</typeparam>
-        /// <typeparam name="P2">Parameter2 type</typeparam>
-        /// <param name="method">Static method to start</param>
-        /// <param name="param1">Parameter1 to pass to the method</param>
-        /// <param name="param2">Parameter2 to pass to the method</param>
-        /// <returns>Result of method</returns>
-        public Task Start<P1, P2>(Action<P1, P2> method, P1 param1, P2 param2)
-        {
-            return StartVariableParamsAndResult<Void>(method.GetMethodInfo(), new ProcessThreadParams(
-                method.Target,
-                new Type[] { typeof(P1), typeof(P2) },
-                new object[] { param1, param2 }));
-        }
-
-        /// <summary>
-        /// Start Process Thread with 3 parameters
-        /// </summary>
-        /// <typeparam name="P1">Parameter1 type</typeparam>
-        /// <typeparam name="P2">Parameter2 type</typeparam>
-        /// <typeparam name="P3">Parameter3 type</typeparam>
-        /// <param name="method">Static method to start</param>
-        /// <param name="param1">Parameter1 to pass to the method</param>
-        /// <param name="param2">Parameter2 to pass to the method</param>
-        /// <param name="param3">Parameter3 to pass to the method</param>
-        /// <returns>Result of method</returns>
-        public Task Start<P1, P2, P3>(Action<P1, P2, P3> method, P1 param1, P2 param2, P3 param3)
-        {
-            return StartVariableParamsAndResult<Void>(method.GetMethodInfo(), new ProcessThreadParams(
-                method.Target,
-                new Type[] { typeof(P1), typeof(P2), typeof(P3) },
-                new object[] { param1, param2, param3 }));
-        }
-
-        /// <summary>
-        /// Start Process Thread with result and no parameters
+        /// Start Process Thread with result and no parameters.
         /// </summary>
         /// <typeparam name="R">Result type</typeparam>
-        /// <param name="method">Static method to start</param>
-        /// <returns>Task for method result</returns>
-        public Task<R> Start<R>(Func<R> method)
+        /// <param name="lambda">Lambda to start in separate process. 
+        /// Must be method call expression. 
+        /// If method object is expression it will be calculated in the caller process. 
+        /// If method parameters are expression they will be calculated in the caller process</param>
+        /// <returns>Task to wait for lambda execution and for its result</returns>
+        public Task<R> Start<R>(Expression<Func<R>> lambda)
         {
-            return StartVariableParamsAndResult<R>(method.GetMethodInfo(), new ProcessThreadParams(method.Target));
-        }
-
-        /// <summary>
-        /// Start Process Thread with parameter and result
-        /// </summary>
-        /// <typeparam name="P1">Parameter type</typeparam>
-        /// <typeparam name="R">Result type</typeparam>
-        /// <param name="method">Static method to start</param>
-        /// <param name="param1">Parameter to pass to the method</param>
-        /// <returns>Result of method</returns>
-        public Task<R> Start<P1, R>(Func<P1, R> method, P1 param1)
-        {
-            return StartVariableParamsAndResult<R>(method.GetMethodInfo(), new ProcessThreadParams(
-                method.Target,
-                new Type[] { typeof(P1) },
-                new object[] { param1 }));
-        }
-
-        /// <summary>
-        /// Start Process Thread with 2 parameters and result
-        /// </summary>
-        /// <typeparam name="P1">Parameter1 type</typeparam>
-        /// <typeparam name="P2">Parameter2 type</typeparam>
-        /// <typeparam name="R">Result type</typeparam>
-        /// <param name="method">Static method to start</param>
-        /// <param name="param1">Parameter1 to pass to the method</param>
-        /// <param name="param2">Parameter2 to pass to the method</param>
-        /// <returns>Result of method</returns>
-        public Task<R> Start<P1, P2, R>(Func<P1, P2, R> method, P1 param1, P2 param2)
-        {
-            return StartVariableParamsAndResult<R>(method.GetMethodInfo(), new ProcessThreadParams(
-                method.Target,
-                new Type[] { typeof(P1), typeof(P2) },
-                new object[] { param1, param2 }));
-        }
-
-        /// <summary>
-        /// Start Process Thread with 3 parameters and result
-        /// </summary>
-        /// <typeparam name="P1">Parameter1 type</typeparam>
-        /// <typeparam name="P2">Parameter2 type</typeparam>
-        /// <typeparam name="P3">Parameter3 type</typeparam>
-        /// <typeparam name="R">Result type</typeparam>
-        /// <param name="method">Static method to start</param>
-        /// <param name="param1">Parameter1 to pass to the method</param>
-        /// <param name="param2">Parameter2 to pass to the method</param>
-        /// <param name="param3">Parameter3 to pass to the method</param>
-        /// <returns>Result of method</returns>
-        public Task<R> Start<P1, P2, P3, R>(Func<P1, P2, P3, R> method, P1 param1, P2 param2, P3 param3)
-        {
-            return StartVariableParamsAndResult<R>(method.GetMethodInfo(), new ProcessThreadParams(
-                method.Target,
-                new Type[] { typeof(P1), typeof(P2), typeof(P3) },
-                new object[] { param1, param2, param3 }));
+            if (!(lambda.Body is MethodCallExpression)) throw new ArgumentException("Lambda must be method call", nameof(lambda));
+            var call = (MethodCallExpression)lambda.Body;
+            var target = (call.Object != null) ? Expression.Lambda(call.Object).Compile().DynamicInvoke() : null;
+            var parameters = call.Arguments.Select(a => Expression.Lambda(a).Compile().DynamicInvoke()).ToArray();
+            var types = call.Method.GetParameters().Select(p => p.ParameterType).ToArray();
+            NamedPipeServerStream pipe;
+            return StartVariableParamsAndResult<R>(call.Method, new ProcessThreadParams(target, types, parameters), out pipe);
         }
 
         void SerializeDeserializeAsync(NamedPipeServerStream pipe, ProcessThreadParams parameters, Action<ProcessThreadResult> callback)
@@ -298,6 +197,7 @@ namespace AZI.ProcessThreads
             pipe.BeginWaitForConnection((ar) =>
             {
                 pipe.EndWaitForConnection(ar);
+
                 var memory = new MemoryStream();
                 formatter.Serialize(memory, parameters);
 
@@ -333,9 +233,8 @@ namespace AZI.ProcessThreads
             }, null);
         }
 
-        Task<R> StartVariableParamsAndResult<R>(MethodInfo method, ProcessThreadParams parameters)
+        Task<R> StartVariableParamsAndResult<R>(MethodInfo method, ProcessThreadParams parameters, out NamedPipeServerStream pipe)
         {
-            //if (!method.IsStatic) throw new ArgumentException("Method has to be static", nameof(method));
             if (!(parameters.Target?.GetType().IsSerializable ?? true)) throw new ArgumentException("Method target must be serializable", nameof(method));
             if (!typeof(R).IsSerializable) throw new ArgumentException("Result must be serializable", typeof(R).FullName);
             foreach (var p in parameters.Parameters)
@@ -343,7 +242,8 @@ namespace AZI.ProcessThreads
 
             var exited = new TaskCompletionSource<R>();
 
-            var proc = BuildInfo(method, InvocationType.Func, exited);
+            var proc = BuildInfo(method, exited);
+
             var formatter = new BinaryFormatter();
             bool resultSet = false;
             R taskResult = default(R);
@@ -366,6 +266,10 @@ namespace AZI.ProcessThreads
             proc.Start(PriorityClass);
 
             Processes.TryAdd(exited.Task, proc);
+
+            NamedPipeServerStream auxPipe = null;
+            if (parameters.Pipe != null) auxPipe = new NamedPipeServerStream(parameters.Pipe, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+            pipe = auxPipe;
 
             SerializeDeserializeAsync(proc.Pipe, parameters, (result) =>
             {

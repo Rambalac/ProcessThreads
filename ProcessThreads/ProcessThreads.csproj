@@ -59,8 +59,8 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="InvocationType.cs" />
     <Compile Include="NativeMethods.cs" />
+    <Compile Include="PipeParameter.cs" />
     <Compile Include="ProcessThread.cs" />
     <Compile Include="ProcessThreadExecutor.cs" />
     <Compile Include="ProcessThreadParams.cs" />

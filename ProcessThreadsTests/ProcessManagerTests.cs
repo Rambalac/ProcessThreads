@@ -13,12 +13,19 @@ namespace AZI.ProcessThreads.Tests
         protected ProcessThreadsManager manager = new ProcessThreadsManager();
     }
 
+    public static class TestExtensions
+    {
+        public static string TestExtension(this string obj, int param)
+        {
+            return obj + param;
+        }
+    }
     public class ProcessManagerTests : ProcessManagerTestsBase
     {
         [Serializable]
         public class TestClass
         {
-            public string teststring = "sdfgsd";
+            public string teststring = "GJHKG";
 
             public string TestMethod(int param)
             {
@@ -30,7 +37,7 @@ namespace AZI.ProcessThreads.Tests
         public void StartTestClassMethod()
         {
             var testobject = new TestClass { teststring = "123" };
-            var task = manager.Start(testobject.TestMethod, 234);
+            var task = manager.Start(() => testobject.TestMethod(234));
             Assert.Equal("123234", task.Result);
         }
 
@@ -38,7 +45,7 @@ namespace AZI.ProcessThreads.Tests
         public void StartTestLibraryClassMethod()
         {
             var testobject = new ProjectForTests.Class1 { teststring = "123" };
-            var task = manager.Start(testobject.TestMethod, 234);
+            var task = manager.Start(() => testobject.TestMethod(234));
             Assert.Equal("123234", task.Result);
         }
 
@@ -49,7 +56,7 @@ namespace AZI.ProcessThreads.Tests
         [Fact]
         public void StartTestAction()
         {
-            var task = manager.Start(TestAction);
+            var task = manager.Start(() => TestAction());
             task.Wait();
             Assert.InRange(DateTime.Now.Subtract(manager[task].Process.ExitTime).Minutes, 0, 5);
         }
@@ -61,32 +68,35 @@ namespace AZI.ProcessThreads.Tests
         [Fact]
         public void StartTestAction1()
         {
-            var task = manager.Start(TestAction1, "sdfg");
+            var task = manager.Start(() => TestAction1("SDFG"));
             task.Wait();
             Assert.InRange(DateTime.Now.Subtract(manager[task].Process.ExitTime).Minutes, 0, 5);
         }
 
-        public static void TestPipe(NamedPipeClientStream pipe)
+        public static void TestPipe(string myparam, NamedPipeClientStream pipe)
         {
             var reader = new StreamReader(pipe);
-            var writer = new StreamWriter(pipe);
-            var buf = reader.ReadLine();
-            writer.Write("BlaBla!!!" + buf);
-            writer.Flush();
+            using (var writer = new StreamWriter(pipe))
+            {
+                var buf = reader.ReadLine();
+                writer.Write(myparam + "BlaBla!!!" + buf);
+                writer.Flush();
+            }
         }
 
         [Fact]
         public void StartTestPipe()
         {
             NamedPipeServerStream pipe;
-            manager.Start(TestPipe, out pipe);
+            manager.Start((p) => TestPipe("HJG", p), out pipe);
+            pipe.WaitForConnection();
             var writer = new StreamWriter(pipe);
-            var reader = new StreamReader(pipe);
-            writer.WriteLine("qwerty");
-            writer.Flush();
-            Assert.Equal("BlaBla!!!qwerty", reader.ReadToEnd());
-
-            pipe.Disconnect();
+            using (var reader = new StreamReader(pipe))
+            {
+                writer.WriteLine("qwerty");
+                writer.Flush();
+                Assert.Equal("HJGBlaBla!!!qwerty", reader.ReadToEnd());
+            }
         }
 
         public static string TestParam(string param)
@@ -97,7 +107,20 @@ namespace AZI.ProcessThreads.Tests
         [Fact]
         public void StartTestSerializationString()
         {
-            Assert.Equal("!!!123!!!", manager.Start(TestParam, "123").Result);
+            Assert.Equal("!!!123!!!", manager.Start(() => TestParam("123")).Result);
+        }
+
+        [Fact]
+        public void StartTestLambda()
+        {
+            var str = "234";
+            Assert.Equal("!!!123234!!!", manager.Start(() => TestParam("123" + str)).Result);
+        }
+
+        [Fact]
+        public void StartTestExtension()
+        {
+            Assert.Equal("321567", manager.Start(() => "321".TestExtension(567)).Result);
         }
 
         public static string TestParam(object param)
@@ -108,7 +131,7 @@ namespace AZI.ProcessThreads.Tests
         [Fact]
         public void StartTestParamTypes()
         {
-            Assert.Equal("Trick!", manager.Start(TestParam, (object)"123").Result);
+            Assert.Equal("Trick!", manager.Start(() => TestParam((object)"123")).Result);
         }
 
         public static string TestParam2(string p1, int p2)
@@ -119,7 +142,7 @@ namespace AZI.ProcessThreads.Tests
         [Fact]
         public void StartTestParam2()
         {
-            Assert.Equal("123321", manager.Start(TestParam2, "123", 321).Result);
+            Assert.Equal("123321", manager.Start(() => TestParam2("123", 321)).Result);
         }
 
         public static string TestParam3(string p1, int p2, bool p3)
@@ -130,7 +153,7 @@ namespace AZI.ProcessThreads.Tests
         [Fact]
         public void StartTestParam3()
         {
-            Assert.Equal("123321False", manager.Start(TestParam3, "123", 321, false).Result);
+            Assert.Equal("123321False", manager.Start(() => TestParam3("123", 321, false)).Result);
         }
 
         public static string TestParam(int param)
@@ -142,7 +165,7 @@ namespace AZI.ProcessThreads.Tests
         [Fact]
         public void StartTestSerializationInt()
         {
-            Assert.Equal("!!!150!!!", manager.Start(TestParam, 15).Result);
+            Assert.Equal("!!!150!!!", manager.Start(() => TestParam(15)).Result);
         }
 
         public static void TestException()
@@ -153,7 +176,7 @@ namespace AZI.ProcessThreads.Tests
         [Fact]
         public void StartTestExceptionAction()
         {
-            var task = manager.Start(TestException);
+            var task = manager.Start(() => TestException());
             var ex = Assert.Throws<AggregateException>(() => task.Wait());
             Assert.True(ex.InnerException is NotSupportedException);
         }
@@ -166,7 +189,7 @@ namespace AZI.ProcessThreads.Tests
         [Fact]
         public void StartTestStackOverflowExceptionAction()
         {
-            var task = manager.Start(TestStackOverflowExceptionException);
+            var task = manager.Start(() => TestStackOverflowExceptionException());
             var ex = Assert.Throws<AggregateException>(() => task.Wait());
             Assert.True(ex.InnerException is StackOverflowException);
         }
@@ -179,9 +202,9 @@ namespace AZI.ProcessThreads.Tests
         [Fact]
         public void StartTestStackOverflowExceptionFunc()
         {
-            var task = manager.Start(TestStackOverflowExceptionException, 123);
+            var task = manager.Start(() => TestStackOverflowExceptionException(123));
             var ex = Assert.Throws<AggregateException>(() => task.Wait());
-            Assert.True( ex.InnerException is StackOverflowException);
+            Assert.True(ex.InnerException is StackOverflowException);
         }
 
 
@@ -196,7 +219,7 @@ namespace AZI.ProcessThreads.Tests
         [Fact]
         public void StartTestCancel()
         {
-            var task = manager.Start(TestCancel);
+            var task = manager.Start(() => TestCancel());
             Thread.Sleep(200);
             Assert.False(task.IsCompleted);
 
@@ -220,7 +243,7 @@ namespace AZI.ProcessThreads.Tests
         [Fact]
         public void StartTestCancelException()
         {
-            var task = manager.Start(TestCancelException);
+            var task = manager.Start(() => TestCancelException());
             Thread.Sleep(200);
             Assert.False(task.IsCompleted);
 

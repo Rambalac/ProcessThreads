@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.IO.Pipes;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Formatters.Binary;
@@ -20,37 +21,29 @@ namespace AZI.ProcessThreads
         /// <returns>Success - 0, Error anything other</returns>
         static int Main(string[] args)
         {
-            if (args.Length < 5) return -1;
+            if (args.Length < 4) return -1;
             NativeMethods.SetErrorMode(NativeMethods.ErrorModes.SEM_NOGPFAULTERRORBOX);
             //Console.WriteLine(string.Join(", ", args));
 
-            Console.Title = args[2] + "." + args[3];
+            Console.Title = args[1] + "." + args[2];
 
             ProcessThreadsManager.isProcessThread = true;
-            ProcessThreadsManager.cancellationEvent = EventWaitHandle.OpenExisting(args[4]);
+            ProcessThreadsManager.cancellationEvent = EventWaitHandle.OpenExisting(args[3]);
 
             try
             {
-                var assembly = Assembly.LoadFile(args[1]);
-                var type = assembly.GetType(args[2]);
+                var assembly = Assembly.LoadFile(args[0]);
+                var type = assembly.GetType(args[1]);
                 try
                 {
-                    switch ((InvocationType)int.Parse(args[0]))
-                    {
-                        case InvocationType.Pipe:
-                            InvokeWithPipe(type, args[3], args[4]);
-                            break;
-                        case InvocationType.Func:
-                            InvokeFunc(type, args[3], args[4]);
-                            break;
-                    }
+                    InvokeFunc(type, args[2], args[3]);
+                    return 0;
                 }
                 catch (TargetInvocationException e)
                 {
                     throw e.InnerException;
                 }
 
-                return 0;
             }
             catch (OperationCanceledException)
             {
@@ -79,47 +72,44 @@ namespace AZI.ProcessThreads
 
                 var formatter = new BinaryFormatter();
                 ProcessThreadParams pars;
+                var lengthBytes = new byte[4];
+                pipe.Read(lengthBytes, 0, 4);
+                var length = BitConverter.ToInt32(lengthBytes, 0);
+
+                var inmemory = new MemoryStream(length);
+                var buf = new byte[1024];
+                while (length != 0)
+                {
+                    var red = pipe.Read(buf, 0, buf.Length);
+                    inmemory.Write(buf, 0, red);
+                    length -= red;
+                }
+                inmemory.Position = 0;
                 try
                 {
-                    var lengthBytes = new byte[4];
-                    pipe.Read(lengthBytes, 0, 4);
-                    var length = BitConverter.ToInt32(lengthBytes, 0);
-
-                    var memory = new MemoryStream(length);
-                    var buf = new byte[1024];
-                    while (length != 0)
-                    {
-                        var red = pipe.Read(buf, 0, buf.Length);
-                        memory.Write(buf, 0, red);
-                        length -= red;
-                    }
-                    memory.Position = 0;
-
                     AppDomain.CurrentDomain.AssemblyResolve += (sender, args) =>
                       {
                           return type.Assembly;
                       };
 
-                    pars = (ProcessThreadParams)formatter.Deserialize(memory);
+                    pars = (ProcessThreadParams)formatter.Deserialize(inmemory);
 
 
-                }
-                catch (SerializationException e)
-                {
+                    var method = type.GetMethod(methodName, pars.Types);
 
-                    formatter.Serialize(pipe, ProcessThreadResult.Exception(e));
-                    throw;
-                }
+                    if (pars.Pipe != null)
+                    {
+                        var auxPipe = new NamedPipeClientStream(pars.Pipe);
+                        auxPipe.Connect();
 
-                var method = type.GetMethod(methodName, pars.Types);
-
-                try
-                {
+                        for (int i = 0; i < pars.Parameters.Length; i++)
+                            if (pars.Parameters[i] is PipeParameter) pars.Parameters[i] = auxPipe;
+                    }
                     object result = method.Invoke(pars.Target, pars.Parameters);
 
-                    var memory = new MemoryStream();
-                    formatter.Serialize(memory, ProcessThreadResult.Successeded(result));
-                    memory.WriteTo(pipe);
+                    var outmemory = new MemoryStream();
+                    formatter.Serialize(outmemory, ProcessThreadResult.Successeded(result));
+                    outmemory.WriteTo(pipe);
                 }
                 catch (TargetInvocationException e)
                 {
@@ -132,24 +122,6 @@ namespace AZI.ProcessThreads
                     throw;
                 }
             }
-        }
-
-        /// <summary>
-        /// Calls method with bi-directional pipe.
-        /// </summary>
-        /// <param name="type">Type containing method</param>
-        /// <param name="methodName">Name of method to call</param>
-        /// <param name="pipeName">Name of pipe to pass</param>
-        static void InvokeWithPipe(Type type, string methodName, string pipeName)
-        {
-            var pipe = new NamedPipeClientStream(pipeName);
-            pipe.Connect();
-
-            var method = type.GetMethod(methodName);
-            method.Invoke(null, new object[] { pipe });
-
-            pipe.WaitForPipeDrain();
-            pipe.Close();
         }
     }
 }
