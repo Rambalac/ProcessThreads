@@ -3,8 +3,15 @@ Process threads
 Runs methods in separate process.
 
 All parameters and method targets must be Serializable.
-Expression in ```Start``` method must be method call expressions. You still can use something like ```manager.Start(()=>("asd"+"fgh").MyExtensionMethod(var1+var2))```, 
-but you cannot use ```manager.Start(()=>MyMethod1(var)+MyMethod2()))```. All method targets and parameters are computed on caller process before executing method on separate process.
+Expression in ```Start``` method must be method call expressions. You still can use something like 
+```
+manager.Start(()=>("asd"+"fgh").MyExtensionMethod(var1+var2))
+```, 
+but you cannot use 
+```
+manager.Start(()=>MyMethod1(var)+MyMethod2()))
+```
+All method targets and parameters are computed on caller process before executing method on separate process.
 
 Because method runs in separate process you can not access the same data in static fields. 
 Any change in static data in one process has no effect for other. 
