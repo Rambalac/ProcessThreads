@@ -87,12 +87,12 @@ public void StartTestCancel()
 ```
 In this case ```Task``` will not have ```IsCanceled``` state, but usual ```IsCompleted```
 
-You also can throw ```OperationCanceledException``` within ProcessThread method, in such case Task will have IsCanceled state.
+You also can throw ```OperationCanceledException``` within ProcessThread method, in such case Task will have ```IsCanceled``` state.
 Use ```ProcessManager.ThrowIfCancellationRequested``` to check cancellation and throw ```OperationCanceledException```
 
 PipeStream
 ----------
-For realtime data exchange you can use ```Start``` with ```NamedPipeClientStream``` out parameter. 
+For real-time data exchange you can use ```Start``` with ```NamedPipeServerStream ``` out parameter. ```NamedPipeClientStream``` will be passed as Lambda parameter to your method.
 Your code is fully responsible for pipes, including proper closing on both sides.
 Don't forget to call ```WaitForConnection``` on caller side to be sure pipe is connected.
 
