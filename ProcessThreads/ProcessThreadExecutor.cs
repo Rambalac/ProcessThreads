@@ -95,7 +95,8 @@ namespace AZI.ProcessThreads
                     pars = (ProcessThreadParams)formatter.Deserialize(inmemory);
 
 
-                    var method = type.GetMethod(methodName, pars.Types);
+                    var method = type.GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance, null, pars.Types, null);
+                    if (method == null) throw new InvalidOperationException("Method is not found: " + methodName);
 
                     if (pars.Pipe != null)
                     {

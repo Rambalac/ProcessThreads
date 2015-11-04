@@ -66,12 +66,15 @@ namespace AZI.ProcessThreads.Tests
         {
         }
 
-        [Fact]
-        public void StartTestAction()
+        private static void TestPrivateAction()
         {
-            var task = manager.Start(() => TestAction());
+        }
+
+        [Fact]
+        public void StartTestPrivateAction()
+        {
+            var task = manager.Start(() => TestPrivateAction());
             task.Wait();
-            Assert.InRange(DateTime.Now.Subtract(manager[task].Process.ExitTime).Minutes, 0, 5);
         }
 
         public static void TestAction1(string param)
