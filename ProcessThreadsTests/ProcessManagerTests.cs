@@ -31,6 +31,10 @@ namespace AZI.ProcessThreads.Tests
             {
                 return teststring + param;
             }
+            public string TestPipe(int param, NamedPipeClientStream pipe)
+            {
+                return teststring + param;
+            }
         }
 
         [Fact]
@@ -38,6 +42,15 @@ namespace AZI.ProcessThreads.Tests
         {
             var testobject = new TestClass { teststring = "123" };
             var task = manager.Start(() => testobject.TestMethod(234));
+            Assert.Equal("123234", task.Result);
+        }
+
+        [Fact]
+        public void StartTestClassMethodWithPipe()
+        {
+            var testobject = new TestClass { teststring = "123" };
+            NamedPipeServerStream pipe;
+            var task = manager.Start((p) => testobject.TestPipe(234, p), out pipe);
             Assert.Equal("123234", task.Result);
         }
 

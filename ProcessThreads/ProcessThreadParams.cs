@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO.Pipes;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -15,12 +16,12 @@ namespace AZI.ProcessThreads
         public object[] Parameters;
         public string Pipe;
 
-        public ProcessThreadParams(object target, Type[] types, object[] pars, bool piped = false)
+        public ProcessThreadParams(MethodCallExpression call)
         {
-            Target = target;
-            Types = types;
-            Parameters = pars;
-            Pipe = Guid.NewGuid().ToString();
+            Parameters = call.Arguments.Select(a => (a is ParameterExpression) ? new PipeParameter() : Expression.Lambda(a).Compile().DynamicInvoke()).ToArray();
+            Types = call.Method.GetParameters().Select(p => p.ParameterType).ToArray();
+            Target = (call.Object != null) ? Expression.Lambda(call.Object).Compile().DynamicInvoke() : null;
+            Pipe = Parameters.Any(p => p is PipeParameter) ? Guid.NewGuid().ToString() : null;
         }
     }
 

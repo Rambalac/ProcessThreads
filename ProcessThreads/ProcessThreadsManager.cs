@@ -145,12 +145,10 @@ namespace AZI.ProcessThreads
         /// <returns>Task to wait for lambda execution</returns>
         public Task Start(Expression<Action<NamedPipeClientStream>> lambda, out NamedPipeServerStream pipe)
         {
-            if (!(lambda.Body is MethodCallExpression)) throw new ArgumentException("Lambda must be method call", nameof(lambda));
-            var call = (MethodCallExpression)lambda.Body;
-            var parameters = call.Arguments.Select(a => (a is ParameterExpression) ? new PipeParameter() : Expression.Lambda(a).Compile().DynamicInvoke()).ToArray();
-            var types = call.Method.GetParameters().Select(p => p.ParameterType).ToArray();
+            var call = lambda.Body as MethodCallExpression;
+            if (call == null) throw new ArgumentException("Lambda must be method call", nameof(lambda));
 
-            return StartVariableParamsAndResult<Void>(call.Method, new ProcessThreadParams(null, types, parameters, true), out pipe);
+            return StartVariableParamsAndResult<Void>(call.Method, new ProcessThreadParams(call), out pipe);
         }
 
         /// <summary>
@@ -162,12 +160,10 @@ namespace AZI.ProcessThreads
         /// <returns>Task to wait for lambda execution and for its result</returns>
         public Task<R> Start<R>(Expression<Func<NamedPipeClientStream, R>> lambda, out NamedPipeServerStream pipe)
         {
-            if (!(lambda.Body is MethodCallExpression)) throw new ArgumentException("Lambda must be method call", nameof(lambda));
-            var call = (MethodCallExpression)lambda.Body;
-            var parameters = call.Arguments.Select(a => (a is ParameterExpression) ? new PipeParameter() : Expression.Lambda(a).Compile().DynamicInvoke()).ToArray();
-            var types = call.Method.GetParameters().Select(p => p.ParameterType).ToArray();
+            var call = lambda.Body as MethodCallExpression;
+            if (call == null) throw new ArgumentException("Lambda must be method call", nameof(lambda));
 
-            return StartVariableParamsAndResult<R>(call.Method, new ProcessThreadParams(null, types, parameters, true), out pipe);
+            return StartVariableParamsAndResult<R>(call.Method, new ProcessThreadParams(call), out pipe);
         }
 
         /// <summary>
@@ -180,12 +176,11 @@ namespace AZI.ProcessThreads
         /// <returns>Task to wait for lambda execution</returns>
         public Task Start(Expression<Action> lambda)
         {
-            if (!(lambda.Body is MethodCallExpression)) throw new ArgumentException("Lambda must be method call", nameof(lambda));
-            var call = (MethodCallExpression)lambda.Body;
-            var parameters = call.Arguments.Select(a => Expression.Lambda(a).Compile().DynamicInvoke()).ToArray();
-            var types = call.Method.GetParameters().Select(p => p.ParameterType).ToArray();
+            var call = lambda.Body as MethodCallExpression;
+            if (call == null) throw new ArgumentException("Lambda must be method call", nameof(lambda));
+
             NamedPipeServerStream pipe;
-            return StartVariableParamsAndResult<Void>(call.Method, new ProcessThreadParams(null, types, parameters), out pipe);
+            return StartVariableParamsAndResult<Void>(call.Method, new ProcessThreadParams(call), out pipe);
         }
 
         /// <summary>
@@ -199,13 +194,11 @@ namespace AZI.ProcessThreads
         /// <returns>Task to wait for lambda execution and for its result</returns>
         public Task<R> Start<R>(Expression<Func<R>> lambda)
         {
-            if (!(lambda.Body is MethodCallExpression)) throw new ArgumentException("Lambda must be method call", nameof(lambda));
-            var call = (MethodCallExpression)lambda.Body;
-            var target = (call.Object != null) ? Expression.Lambda(call.Object).Compile().DynamicInvoke() : null;
-            var parameters = call.Arguments.Select(a => Expression.Lambda(a).Compile().DynamicInvoke()).ToArray();
-            var types = call.Method.GetParameters().Select(p => p.ParameterType).ToArray();
+            var call = lambda.Body as MethodCallExpression;
+            if (call == null) throw new ArgumentException("Lambda must be method call", nameof(lambda));
+
             NamedPipeServerStream pipe;
-            return StartVariableParamsAndResult<R>(call.Method, new ProcessThreadParams(target, types, parameters), out pipe);
+            return StartVariableParamsAndResult<R>(call.Method, new ProcessThreadParams(call), out pipe);
         }
 
         void SerializeDeserializeAsync(NamedPipeServerStream pipe, ProcessThreadParams parameters, Action<ProcessThreadResult> callback)
