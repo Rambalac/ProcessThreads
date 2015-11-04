@@ -23,8 +23,8 @@
     <Title>ProcessThreads</Title>
     <Authors>Rambalac</Authors>
     <Owners>Rambalac</Owners>
-    <Summary>Run static methods in separate process</Summary>
-    <Description>Run static methods in separate process</Description>
+    <Summary>Run methods in separate process</Summary>
+    <Description>Run methods in separate process</Description>
     <ReleaseNotes>
     </ReleaseNotes>
     <ProjectUrl>https://github.com/Rambalac/ProcessThreads</ProjectUrl>

@@ -102,7 +102,7 @@ namespace AZI.ProcessThreads.Tests
         public void StartTestPipe()
         {
             NamedPipeServerStream pipe;
-            var task=manager.Start((p) => TestPipe("HJG", p), out pipe);
+            var task = manager.Start((p) => TestPipe("HJG", p), out pipe);
             pipe.WaitForConnection();
             var writer = new StreamWriter(pipe);
             using (var reader = new StreamReader(pipe))
@@ -193,7 +193,7 @@ namespace AZI.ProcessThreads.Tests
         {
             var task = manager.Start(() => TestException());
             var ex = Assert.Throws<AggregateException>(() => task.Wait());
-            Assert.True(ex.InnerException is NotSupportedException);
+            Assert.IsType<NotSupportedException>(ex.InnerException);
         }
 
         public static void TestStackOverflowExceptionException()
@@ -206,7 +206,7 @@ namespace AZI.ProcessThreads.Tests
         {
             var task = manager.Start(() => TestStackOverflowExceptionException());
             var ex = Assert.Throws<AggregateException>(() => task.Wait());
-            Assert.True(ex.InnerException is StackOverflowException);
+            Assert.IsType<StackOverflowException>(ex.InnerException);
         }
 
         public static string TestStackOverflowExceptionException(int a)
@@ -219,7 +219,7 @@ namespace AZI.ProcessThreads.Tests
         {
             var task = manager.Start(() => TestStackOverflowExceptionException(123));
             var ex = Assert.Throws<AggregateException>(() => task.Wait());
-            Assert.True(ex.InnerException is StackOverflowException);
+            Assert.IsType<StackOverflowException>(ex.InnerException);
         }
 
 
