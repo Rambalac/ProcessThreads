@@ -179,12 +179,60 @@ namespace AZI.ProcessThreads.Tests
             return "!!!" + (param * 10) + "!!!";
         }
 
+        public static void TestSleep(int param)
+        {
+            Thread.Sleep(param);
+        }
+
 
         [Fact]
         public void StartTestSerializationInt()
         {
             Assert.Equal("!!!150!!!", manager.Start(() => TestParam(15)).Result);
         }
+
+        [Fact]
+        public void StartTestDispose()
+        {
+            using (var newmanager = new ProcessThreadsManager())
+            {
+                Assert.Equal("!!!150!!!", newmanager.Start(() => TestParam(15)).Result);
+            }
+        }
+
+        [Fact]
+        public void StartTestDisposeKill()
+        {
+            int procid;
+            using (var newmanager = new ProcessThreadsManager())
+            {
+                var task = newmanager.Start(() => TestSleep(60000));
+                procid = newmanager[task].Process.Id;
+                Thread.Sleep(200);
+            }
+            Thread.Sleep(100);
+            Assert.Throws<ArgumentException>(() => Process.GetProcessById(procid));
+
+        }
+
+        [Fact]
+        public void StartTestDisposeNotKill()
+        {
+            int procid;
+            using (var newmanager = new ProcessThreadsManager())
+            {
+                newmanager.KillOnDispose = false;
+                var task = newmanager.Start(() => TestSleep(60000));
+                procid = newmanager[task].Process.Id;
+                Thread.Sleep(200);
+            }
+            Thread.Sleep(100);
+            var proc = Process.GetProcessById(procid);
+            Assert.Equal(procid, proc.Id);
+            proc.Kill();
+
+        }
+
 
         public static void TestException()
         {

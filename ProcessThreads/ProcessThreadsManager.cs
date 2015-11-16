@@ -26,39 +26,42 @@ namespace AZI.ProcessThreads
     public class ProcessThreadsManager : IDisposable
     {
 
-        internal static bool isProcessThread = false;
-
         internal static EventWaitHandle cancellationEvent = null;
 
         /// <summary>
         /// List of started Process Threads
         /// </summary>
-        readonly ConcurrentDictionary<Task, ProcessThread> Processes = new ConcurrentDictionary<Task, ProcessThread>();
+        readonly ConcurrentDictionary<Task, ProcessThread> processes = new ConcurrentDictionary<Task, ProcessThread>();
 
         /// <summary>
         /// True if run in Process Thread
         /// </summary>
-        public static bool IsProcessThread => isProcessThread;
+        public static bool IsProcessThread { get; internal set; } = false;
 
         /// <summary>
         /// See <see cref="ProcessStartInfo" />
         /// </summary>
-        public bool CreateNoWindow = true;
+        public bool CreateNoWindow { get; set; } = true;
 
         /// <summary>
         /// See <see cref="Process"/>
         /// </summary>
-        public ProcessPriorityClass PriorityClass = ProcessPriorityClass.Normal;
+        public ProcessPriorityClass PriorityClass { get; set; } = ProcessPriorityClass.Normal;
 
         /// <summary>
         /// See <see cref="ProcessStartInfo" />
         /// </summary>
-        public SecureString Password;
+        public SecureString Password { get; set; }
 
         /// <summary>
         /// See <see cref="ProcessStartInfo" />
         /// </summary>
-        public string UserName;
+        public string UserName { get; set; }
+
+        /// <summary>
+        /// Kill all started processes on Dispose
+        /// </summary>
+        public bool KillOnDispose { get; set; } = true;
 
         /// <summary>
         /// If cancellation signal was set by manager throws OperationCanceledException to inform Task about canceled operation (IsCanceled true).
@@ -75,7 +78,7 @@ namespace AZI.ProcessThreads
         {
             get
             {
-                if (!isProcessThread) throw new InvalidOperationException("Not a Process Thread");
+                if (!IsProcessThread) throw new InvalidOperationException("Not a Process Thread");
                 return cancellationEvent.WaitOne(0);
             }
         }
@@ -87,7 +90,7 @@ namespace AZI.ProcessThreads
         /// <returns>Process Thread control object.</returns>
         public ProcessThread this[Task task]
         {
-            get { return Processes[task]; }
+            get { return processes[task]; }
         }
 
         /// <summary>
@@ -275,7 +278,7 @@ namespace AZI.ProcessThreads
 
             proc.Start(PriorityClass);
 
-            Processes.TryAdd(exited.Task, proc);
+            processes.TryAdd(exited.Task, proc);
 
             NamedPipeServerStream auxPipe = null;
             if (parameters.Pipe != null) auxPipe = new NamedPipeServerStream(parameters.Pipe, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
@@ -307,14 +310,14 @@ namespace AZI.ProcessThreads
         public void CleanUp()
         {
             var remove = new List<Task>();
-            foreach (var pair in Processes.Where(p => p.Value.Process.HasExited))
+            foreach (var pair in processes.Where(p => p.Value.Process.HasExited))
             {
                 pair.Value.Process.Dispose();
                 remove.Add(pair.Key);
             }
             ProcessThread value;
             foreach (var key in remove)
-                Processes.TryRemove(key, out value);
+                processes.TryRemove(key, out value);
         }
 
         /// <summary>
@@ -330,7 +333,20 @@ namespace AZI.ProcessThreads
         /// </summary>
         protected virtual void Dispose(bool v)
         {
-            Password.Dispose();
+            if (Password != null) Password.Dispose();
+            if (KillOnDispose)
+                foreach (var pair in processes)
+                {
+                    var proc = pair.Value.Process;
+                    if (!proc.HasExited)
+                        try {
+                            proc.Kill();
+                        } catch(InvalidOperationException)
+                        {
+                            //Should be ignored, probably process has exited in between
+                        }
+                    pair.Value.Process.Dispose();
+                }
         }
     }
 }

@@ -27,7 +27,7 @@ namespace AZI.ProcessThreads
 
             Console.Title = args[1] + "." + args[2];
 
-            ProcessThreadsManager.isProcessThread = true;
+            ProcessThreadsManager.IsProcessThread = true;
             ProcessThreadsManager.cancellationEvent = EventWaitHandle.OpenExisting(args[3]);
 
             try
