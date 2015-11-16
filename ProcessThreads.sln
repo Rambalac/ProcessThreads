@@ -9,6 +9,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProcessThreadsTests", "Proc
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{EDF999EB-0CA9-489E-8DD5-7671E5C4E541}"
 	ProjectSection(SolutionItems) = preProject
+		LICENCE = LICENCE
 		ReadMe.md = ReadMe.md
 	EndProjectSection
 EndProject
